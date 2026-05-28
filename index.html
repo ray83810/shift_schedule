@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asurion 智能排班系統 | Asurion Roster Automation</title>
+  <!-- Google Fonts: Outfit (For Headings) and Inter (For UI Text) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+  <!-- Dynamic Glowing Background Effects -->
+  <div class="glow-bg">
+    <div class="glow-sphere sphere-1"></div>
+    <div class="glow-sphere sphere-2"></div>
+  </div>
+
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-logo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="logo-icon">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+      </div>
+      <div>
+        <h1>ASURION ROSTER</h1>
+        <p class="brand-subtitle">Asurion班表系統</p>
+      </div>
+    </div>
+
+    <!-- Central Calendar Controls -->
+    <div class="header-controls">
+      <div class="control-group">
+        <label for="schedule-year">年度</label>
+        <select id="schedule-year" class="form-control"></select>
+      </div>
+      <div class="control-group">
+        <label for="schedule-month">月份</label>
+        <select id="schedule-month" class="form-control">
+          <option value="0">1 月</option>
+          <option value="1">2 月</option>
+          <option value="2">3 月</option>
+          <option value="3">4 月</option>
+          <option value="4">5 月</option>
+          <option value="5">6 月</option>
+          <option value="6">7 月</option>
+          <option value="7">8 月</option>
+          <option value="8">9 月</option>
+          <option value="9">10 月</option>
+          <option value="10">11 月</option>
+          <option value="11">12 月</option>
+        </select>
+      </div>
+      
+      <div class="divider"></div>
+
+      <div class="days-off-config">
+        <label for="global-days-off">當月休假天數</label>
+        <input type="number" id="global-days-off" class="form-control short-input" value="8" min="4" max="15">
+        <span class="unit">天</span>
+      </div>
+    </div>
+
+    <!-- Actions Area -->
+    <div class="header-actions">
+      <button id="btn-theme-toggle" class="btn-icon" title="切換深淺色主題">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+      
+      <button id="btn-auto-schedule" class="btn btn-primary btn-glow">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon-svg"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L15.4 5.6l3 3 3.24-3.24a1.21 1.21 0 0 0 0-1.72Z"/><path d="M14 7 3 18v3h3L17 10l-3-3Z"/><path d="m5 6 3-3M2 10l3-3M2 14l3-3M10 2l-3 3M14 2l-3 3M18 2l-3 3"/></svg>
+        <span>一鍵智能排班</span>
+      </button>
+      
+      <div class="dropdown">
+        <button id="btn-export-menu" class="btn btn-secondary dropdown-toggle">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon-svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>匯出班表</span>
+        </button>
+        <div class="dropdown-menu">
+          <a href="#" id="export-csv">匯出為 CSV 檔</a>
+          <a href="#" id="export-pdf">列印/儲存為 PDF</a>
+          <a href="#" id="export-json">備份排班設定 (JSON)</a>
+          <a href="#" id="import-json-trigger">匯入排班設定</a>
+          <a href="#" id="reset-defaults" style="color: var(--accent-red); border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 8px;">🔄 重置為預設值</a>
+        </div>
+      </div>
+      <input type="file" id="import-json-file" style="display: none;" accept=".json">
+    </div>
+  </header>
+
+  <!-- Dashboard Overview Area -->
+  <section class="dashboard-metrics">
+    <div class="metric-card card-glass animate-float-slow">
+      <div class="card-glow-border"></div>
+      <div class="metric-icon icon-blue">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="metric-info">
+        <span class="metric-label">團隊總人數</span>
+        <h3 id="stat-total-staff" class="metric-value">0</h3>
+        <p class="metric-desc">名在職客服專員</p>
+      </div>
+    </div>
+
+    <div class="metric-card card-glass animate-float-slow" style="animation-delay: 0.2s;">
+      <div class="card-glow-border"></div>
+      <div class="metric-icon icon-green" id="compliance-icon-container">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div class="metric-info">
+        <span class="metric-label">勞基法合規健康度</span>
+        <h3 id="stat-compliance" class="metric-value">100%</h3>
+        <p id="stat-compliance-text" class="metric-desc text-green">無勞基法違規項目</p>
+      </div>
+    </div>
+
+    <div class="metric-card card-glass animate-float-slow" style="animation-delay: 0.4s;">
+      <div class="card-glow-border"></div>
+      <div class="metric-icon icon-purple">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div class="metric-info">
+        <span class="metric-label">今日排班覆蓋率</span>
+        <h3 id="stat-coverage" class="metric-value">0%</h3>
+        <p id="stat-coverage-text" class="metric-desc">早/中/晚班配置狀況</p>
+      </div>
+    </div>
+
+    <div class="metric-card card-glass animate-float-slow" style="animation-delay: 0.6s;">
+      <div class="card-glow-border"></div>
+      <div class="metric-icon icon-orange">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div class="metric-info">
+        <span class="metric-label">總工時 / 人均工時</span>
+        <h3 id="stat-avg-hours" class="metric-value">0 hrs</h3>
+        <p class="metric-desc">本月排班累計時間</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Grid Workspace -->
+  <main class="app-workspace">
+    
+    <!-- Left Sidebar: Configuration Panels -->
+    <aside class="workspace-sidebar">
+      
+      <!-- Tab Controls for Sidebar -->
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="staff-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>客服人員</span>
+        </button>
+        <button class="sidebar-tab" data-tab="shifts-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M12 14v4"/><path d="M9 16h6"/></svg>
+          <span>班別與需求</span>
+        </button>
+        <button class="sidebar-tab" data-tab="fairness-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+          <span>公平性與工時</span>
+        </button>
+        <button class="sidebar-tab" data-tab="settings-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><path d="M18 10h-.01c.01-.16.01-.32.01-.48a6.5 6.5 0 0 0-13 0c0 .16 0 .32.01.48H5a5 5 0 0 0 0 10h13a5 5 0 0 0 0-10z"/></svg>
+          <span>雲端同步</span>
+        </button>
+        <button class="sidebar-tab" data-tab="archive-panel">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="tab-icon"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>
+          <span>歷史班表</span>
+        </button>
+      </div>
+
+      <!-- Content Area of Sidebar Panels -->
+      <div class="sidebar-content-container">
+        
+        <!-- Panel 1: Staff List & Management -->
+        <div id="staff-panel" class="sidebar-panel active">
+          <div class="panel-header">
+            <h3>客服人員名單</h3>
+            <button id="btn-add-staff" class="btn btn-sm btn-glow">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="btn-icon-svg"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>新增人員</span>
+            </button>
+          </div>
+
+          <!-- Add Staff Form (Collapsed by default, toggled via JS) -->
+          <div id="add-staff-form" class="form-card card-inner display-none">
+            <h4>快速新增人員</h4>
+            <div class="form-group">
+              <label for="input-staff-name">姓名</label>
+              <input type="text" id="input-staff-name" class="form-control" placeholder="輸入姓名 (例如: 陳大明)" required>
+            </div>
+            <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px; margin-top: 4px;">
+              <input type="checkbox" id="input-staff-independent" style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="input-staff-independent" style="cursor: pointer; margin-bottom: 0; user-select: none;">獨立排班 (固定 12:00 班次，不計入常規人力)</label>
+            </div>
+            <div class="form-actions">
+              <button id="btn-staff-submit" class="btn btn-primary btn-sm">新增</button>
+              <button id="btn-staff-cancel" class="btn btn-secondary btn-sm">取消</button>
+            </div>
+          </div>
+
+          <!-- Staff Dynamic List -->
+          <div class="staff-list-wrapper" id="staff-list">
+            <!-- Dynamic Injection via Javascript -->
+          </div>
+        </div>
+
+        <!-- Panel 2: Shift Definitions & Daily Targets -->
+        <div id="shifts-panel" class="sidebar-panel">
+          <div class="panel-header">
+            <h3>班別定義與需求</h3>
+            <button id="btn-add-shift" class="btn btn-sm btn-glow">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="btn-icon-svg"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>自訂班別</span>
+            </button>
+          </div>
+
+          <!-- Add Shift Form (Collapsed by default) -->
+          <div id="add-shift-form" class="form-card card-inner display-none">
+            <h4>新增自訂班別</h4>
+            <div class="form-group">
+              <label for="input-shift-name">班別簡稱</label>
+              <input type="text" id="input-shift-name" class="form-control" placeholder="例如: 大夜" maxlength="3" required>
+            </div>
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="input-shift-start">上班時間</label>
+                <input type="time" id="input-shift-start" class="form-control" value="23:00" required>
+              </div>
+              <div class="form-group col">
+                <label for="input-shift-end">下班時間</label>
+                <input type="time" id="input-shift-end" class="form-control" value="08:00" required>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button id="btn-shift-submit" class="btn btn-primary btn-sm">建立</button>
+              <button id="btn-shift-cancel" class="btn btn-secondary btn-sm">取消</button>
+            </div>
+          </div>
+
+          <!-- Shift List -->
+          <div class="shifts-list-container">
+            <h4>現有班次定義</h4>
+            <div class="shift-cards-wrapper" id="shift-definitions-list">
+              <!-- Dynamically Populated -->
+            </div>
+          </div>
+
+          <!-- Roster Coverage Targets -->
+          <div class="coverage-targets-container">
+            <h4>每日班次人力需求 (最少人數)</h4>
+            <div class="coverage-table-responsive">
+              <table class="coverage-table">
+                <thead>
+                  <tr>
+                    <th>班別</th>
+                    <th>平日需求 (週一~五)</th>
+                    <th>假日需求 (週六~日)</th>
+                  </tr>
+                </thead>
+                <tbody id="coverage-targets-body">
+                  <!-- Dynamically generated from active shifts -->
+                </tbody>
+              </table>
+            </div>
+            <p class="coverage-help">* 人力需求將作為智能排班的約束依據。若安排不足將顯示警示。</p>
+          </div>
+        </div>
+
+        <!-- Panel 3: Fairness Dashboard & Statistics -->
+        <div id="fairness-panel" class="sidebar-panel">
+          <div class="panel-header">
+            <h3>排班公平性統計</h3>
+          </div>
+          <div class="fairness-stats-wrapper">
+            <div class="stat-help-text">提供本月已排班表內，各人員的工作量統計，確保排班均勻分配。</div>
+            
+            <div id="fairness-chart-list" class="fairness-chart-list">
+              <!-- Dynamically Filled with Fairness progress bars -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 4: Cloud Sync & Settings -->
+        <div id="settings-panel" class="sidebar-panel">
+          <div class="panel-header">
+            <h3>雲端備份與同步</h3>
+          </div>
+          <div class="fairness-stats-wrapper">
+            <div class="settings-group">
+              <label for="input-web-app-url">Google Apps Script 網頁應用程式網址</label>
+              <div class="settings-input-wrapper" style="display: flex; position: relative; width: 100%;">
+                <input type="url" id="input-web-app-url" class="form-control" placeholder="https://script.google.com/macros/s/.../exec" style="padding-right: 36px; width: 100%;">
+                <button id="btn-clear-url" class="clear-input-btn" title="清除網址" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; transition: color 0.2s;">&times;</button>
+              </div>
+              <p class="section-desc" style="margin-top: 4px;">請在此貼上您的 Google Apps Script 網頁應用程式部署網址，以啟用雲端同步。</p>
+            </div>
+
+            <div class="settings-actions" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+              <button id="btn-cloud-upload" class="btn btn-sync-cloud btn-glow" style="display: flex; align-items: center; justify-content: center; padding: 10px; width: 100%;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon-svg" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span>備份到雲端 (上傳)</span>
+              </button>
+              <button id="btn-cloud-download" class="btn btn-download-cloud" style="display: flex; align-items: center; justify-content: center; padding: 10px; width: 100%;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon-svg" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>從雲端同步 (下載)</span>
+              </button>
+            </div>
+
+            <div class="sync-status-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-top: 16px; display: flex; flex-direction: column; gap: 6px;">
+              <div class="status-row" style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                <span class="status-label" style="color: var(--text-secondary);">同步狀態：</span>
+                <span id="sync-status-indicator" class="status-value disconnected" style="font-weight: 600; color: var(--text-muted);">未連接</span>
+              </div>
+              <div class="status-row" style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                <span class="status-label" style="color: var(--text-secondary);">最後同步時間：</span>
+                <span id="sync-last-time" class="status-value" style="font-weight: 600; color: var(--text-primary);">-</span>
+              </div>
+              <div id="sync-status-message" class="status-message" style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--border-color);">尚未設定 Web App 網址。貼上網址並按「備份到雲端」可將現有班表上傳並於 Google Sheets 中產生人類易讀的精美班表。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panel 5: Archive / Past Rosters -->
+        <div id="archive-panel" class="sidebar-panel">
+          <div class="panel-header">
+            <h3>歷史班表與備份</h3>
+          </div>
+          <div class="fairness-stats-wrapper">
+            <!-- Action 1: Upload Excel/CSV -->
+            <div class="settings-group">
+              <label>上傳過去班表檔案</label>
+              <p class="section-desc" style="margin-bottom: 8px;">支援上傳 Excel (`.xlsx`, `.xls`) 或 CSV 檔案。</p>
+              
+              <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+                <button id="btn-trigger-upload-archive" class="btn btn-sm btn-glow" style="flex: 1; justify-content: center; padding: 10px 0; display: flex; align-items: center;">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon-svg" style="margin-right: 6px; width: 16px; height: 16px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <span>上傳班表檔案</span>
+                </button>
+                <input type="file" id="input-archive-file" accept=".xlsx,.xls,.csv" style="display: none;">
+              </div>
+            </div>
+
+            <!-- Action 2: Archive Current Active Roster -->
+            <div class="settings-group" style="margin-top: 16px;">
+              <label>將目前班表存為歷史</label>
+              <p class="section-desc" style="margin-bottom: 8px;">把當前畫面上正在編輯或已儲存的班表快照封存。</p>
+              <button id="btn-archive-current" class="btn btn-sm btn-secondary" style="width: 100%; justify-content: center; padding: 10px 0; display: flex; align-items: center;">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon-svg" style="margin-right: 6px; width: 16px; height: 16px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>封存目前班表</span>
+              </button>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); margin: 16px 0; padding-top: 16px;">
+              <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 0.85rem;">已封存的班表列表</label>
+              <div id="archive-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 350px; overflow-y: auto; padding-right: 4px;">
+                <!-- Dynamically populated -->
+                <div style="text-align: center; color: var(--text-muted); padding: 20px; font-size: 0.8rem;">暫無封存班表</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Center/Right Area: Calendar Timeline View -->
+    <section class="roster-view-container card-glass">
+      <div class="card-glow-border"></div>
+      
+      <div class="roster-view-header">
+        <div class="view-title-group">
+          <h2 id="roster-calendar-title">2026 年 5 月 班表總覽</h2>
+          <span class="badge" id="roster-status-badge">未發布</span>
+        </div>
+
+        <!-- Unsaved Changes Actions -->
+        <div id="roster-unsaved-actions" class="roster-unsaved-actions display-none">
+          <span class="unsaved-warning-text">⚠️ 您有未儲存的變更</span>
+          <button id="btn-save-roster" class="btn btn-xs btn-primary btn-glow">儲存班表</button>
+          <button id="btn-cancel-roster" class="btn btn-xs btn-secondary">取消變更</button>
+        </div>
+        
+        <!-- Legend of Shifts -->
+        <div class="roster-legend" id="roster-legend-container">
+          <!-- Dynamically filled -->
+        </div>
+      </div>
+
+      <!-- Roster View Mode Grid -->
+      <div class="roster-scroll-container">
+        <table class="roster-grid-table" id="roster-main-grid">
+          <!-- Dynamically Generated Matrix of Employee Rows vs Monthly Date Columns -->
+        </table>
+      </div>
+
+      <!-- Realtime Warning Panel -->
+      <div id="warnings-panel" class="warnings-panel display-none">
+        <div class="warnings-header">
+          <div class="warnings-title-group">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="warning-icon-header"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span class="warning-count-title">排班規則衝突報告 (<span id="warning-count">0</span> 項違規)</span>
+          </div>
+          <button class="btn btn-xs btn-secondary" id="btn-dismiss-warnings">收合</button>
+        </div>
+        <ul class="warning-items-list" id="warning-list-items">
+          <!-- Dynamically Filled -->
+        </ul>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: Employee Preferences & PTO Editor -->
+  <div id="modal-employee-config" class="modal-overlay display-none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-employee-title">編輯員工休假預設與特休</h3>
+        <button class="modal-close" id="btn-close-modal">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        
+        <!-- Section 1: PTO / Leaves -->
+        <div class="modal-section">
+          <h4>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            本月特休與指定請假天數 (PTO)
+          </h4>
+          <p class="section-desc">直接點選日期，選中的日期在自動排班時會**強制安排休假 (OFF)**。</p>
+          
+          <div class="modal-calendar-container">
+            <div class="modal-calendar-grid" id="modal-pto-calendar">
+              <!-- Render calendar days for current month -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Default Off Days -->
+        <div class="modal-section">
+          <h4>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            休假預設 (每週固定休假兩天)
+          </h4>
+          <p class="section-desc">請選擇該專員每週預設休假的兩天。自動排班演算法將會優先保障此設定。</p>
+
+          <div class="default-off-days-container" id="default-off-days-checkboxes" style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;">
+            <!-- Dynamically generated checkboxes for Sun - Sat -->
+          </div>
+          <div id="default-off-days-warning" style="color: var(--accent-red); font-size: 0.85rem; margin-top: 8px; font-weight: 500; display: none;">⚠️ 建議選擇剛好兩天以達到最佳排班平衡與勞基法合規效果。</div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-pref-cancel">關閉</button>
+        <button class="btn btn-primary" id="btn-pref-save">儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Export Fallback / Copy Clipboard -->
+  <div id="modal-export-fallback" class="modal-overlay display-none">
+    <div class="modal-card" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>📋 複製排班資料</h3>
+        <button class="modal-close" id="btn-close-export-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="section-desc">您的瀏覽器可能阻擋了自動下載檔案，您可以直接複製下方的排班資料：</p>
+        <div class="form-group" style="margin-top: 12px;">
+          <textarea id="export-fallback-textarea" class="form-control" style="width: 100%; height: 250px; font-family: monospace; font-size: 0.85rem; background: rgba(18, 24, 36, 0.6); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 12px; resize: vertical;" readonly></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-export-close">關閉</button>
+        <button class="btn btn-primary" id="btn-export-copy">複製到剪貼簿</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <p>&copy; 2026 Asurion Roster Automation. Built under compliance with Taiwan Labor Standards Act.</p>
+  </footer>
+
+  <!-- Modal: Archive View -->
+  <div id="modal-archive-view" class="modal-overlay display-none">
+    <div class="modal-card" style="max-width: 90%; width: 1200px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <h3 id="archive-view-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>📅</span> <span id="archive-view-name">檢視歷史班表</span>
+        </h3>
+        <button class="modal-close" id="btn-close-archive-modal">&times;</button>
+      </div>
+      <div class="modal-body" style="overflow: hidden; display: flex; flex-direction: column; gap: 16px; flex: 1;">
+        <div class="sync-status-card" style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; font-size: 0.8rem; margin: 0;">
+          <div>
+            <span style="color: var(--text-secondary);">封存時間：</span>
+            <span id="archive-view-time" style="font-weight: 600; color: var(--text-primary);">-</span>
+          </div>
+          <div>
+            <span style="color: var(--text-secondary);">資料來源：</span>
+            <span id="archive-view-source" style="font-weight: 600; color: var(--accent-blue);">-</span>
+          </div>
+        </div>
+        <div class="table-responsive" style="flex: 1; overflow: auto; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+          <table class="roster-table" style="width: 100%; border-collapse: separate; border-spacing: 0; background: var(--bg-secondary); min-width: 800px;">
+            <thead id="archive-table-head" style="position: sticky; top: 0; z-index: 10;">
+              <!-- Dynamically populated -->
+            </thead>
+            <tbody id="archive-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 0;">
+        <button class="btn btn-secondary" id="btn-archive-view-close">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
