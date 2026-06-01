@@ -651,6 +651,110 @@ function runAutoScheduler() {
     }
   });
 
+  // --- 4. 進行每日空缺補足與調班支援平衡 Pass ---
+  const supportDaysCount = {};
+  const supportedShifts = {}; // empId -> Set of non-default shiftIds
+  staffList.forEach(emp => {
+    supportDaysCount[emp.id] = 0;
+    supportedShifts[emp.id] = new Set();
+  });
+
+  for (let d = 1; d <= daysCount; d++) {
+    const dateStr = formatDateISO(year, month, d);
+    const dayOfWeek = getDayOfWeek(year, month, d);
+    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+    // 我們先計算今日哪些班次有缺口，並記錄缺幾個
+    const shortages = [];
+    state.shifts.forEach(shift => {
+      if (shift.id === 'D') return; // D 班是獨立班，不參與常規調度支援
+      
+      const targetConfig = state.coverageTargets[shift.id] || { weekday: 0, weekend: 0 };
+      const required = isWeekend ? targetConfig.weekend : targetConfig.weekday;
+      
+      // 計算今日排該班次的人數
+      let currentScheduled = 0;
+      staffList.forEach(emp => {
+        if (newRoster[dateStr][emp.id] === shift.id) {
+          currentScheduled++;
+        }
+      });
+      
+      const diff = required - currentScheduled;
+      if (diff > 0) {
+        shortages.push({ shiftId: shift.id, count: diff });
+      }
+    });
+
+    // 對於今日有缺口的班次，嘗試尋找支援
+    shortages.forEach(shortage => {
+      for (let i = 0; i < shortage.count; i++) {
+        // 尋找最合適的支援人員
+        let bestEmpId = null;
+        let lowestSupportDays = Infinity;
+        
+        staffList.forEach(emp => {
+          if (emp.isIndependent) return; // 排除獨立排班人員
+
+          const currentShift = newRoster[dateStr][emp.id];
+          // 如果他今天沒上班 (OFF, PTO) 或是已經在排這個缺口班別，就不能支援
+          if (currentShift === 'OFF' || currentShift === 'PTO' || currentShift === shortage.shiftId) return;
+
+          const defShift = emp.defaultWorkShift || 'A';
+          
+          // 支援限制檢查:
+          // 1. 他本月支援過的其他班別種類限制（扣除他自己的預設班別）
+          const tempSet = new Set(supportedShifts[emp.id]);
+          if (shortage.shiftId !== defShift) {
+            tempSet.add(shortage.shiftId);
+          }
+          if (tempSet.size > 1) return; // 超過一種支援班別限制！
+
+          // 2. 11小時輪班間隔限制 (前一天與後一天)
+          // 檢查前一天
+          if (d > 1) {
+            const prevDateStr = formatDateISO(year, month, d - 1);
+            const prevShiftId = newRoster[prevDateStr][emp.id];
+            const prevS = state.shifts.find(s => s.id === prevShiftId);
+            const currS = state.shifts.find(s => s.id === shortage.shiftId);
+            if (prevS && currS && prevShiftId !== 'OFF' && prevShiftId !== 'PTO') {
+              if (calculateRestHours(prevS, currS) < 11) return;
+            }
+          }
+          // 檢查後一天
+          if (d < daysCount) {
+            const nextDateStr = formatDateISO(year, month, d + 1);
+            const nextShiftId = newRoster[nextDateStr][emp.id];
+            const currS = state.shifts.find(s => s.id === shortage.shiftId);
+            const nextS = state.shifts.find(s => s.id === nextShiftId);
+            if (currS && nextS && nextShiftId !== 'OFF' && nextShiftId !== 'PTO') {
+              if (calculateRestHours(currS, nextS) < 11) return;
+            }
+          }
+
+          // 如果此人合規，比對其累積支援天數以維持平均
+          const days = supportDaysCount[emp.id];
+          if (days < lowestSupportDays) {
+            lowestSupportDays = days;
+            bestEmpId = emp.id;
+          }
+        });
+
+        // 如果找到了最適合支援的人
+        if (bestEmpId) {
+          newRoster[dateStr][bestEmpId] = shortage.shiftId;
+          
+          // 更新支援狀態
+          supportDaysCount[bestEmpId]++;
+          const defShift = state.staff.find(e => e.id === bestEmpId).defaultWorkShift || 'A';
+          if (shortage.shiftId !== defShift) {
+            supportedShifts[bestEmpId].add(shortage.shiftId);
+          }
+        }
+      }
+    });
+  }
+
   // 5. 將結果套用至系統狀態並標記未儲存
   state.roster = newRoster;
   state.hasUnsavedChanges = true;
@@ -1025,6 +1129,10 @@ function renderRosterGrid() {
       // 檢查這個格子是否在違規報告中 (紅光警告標識)
       const hasConflict = currentWarnings.some(w => w.employeeId === employee.id && w.date === dateStr && w.severity === 'error');
       
+      // 檢查是否為調班支援班次 (非預設工作班別，且非休假特休)
+      const defShift = employee.defaultWorkShift || (employee.isIndependent ? 'D' : 'A');
+      const isSupportShift = (assignedShiftId !== 'OFF' && assignedShiftId !== 'PTO' && assignedShiftId !== defShift);
+
       // 繪製格子的 Shift Badge
       let badgeLabel = assignedShiftId;
       let badgeClass = `shift-${assignedShiftId}`;
@@ -1038,13 +1146,16 @@ function renderRosterGrid() {
         const matchedShift = shiftList.find(s => s.id === assignedShiftId);
         if (matchedShift) {
           badgeLabel = matchedShift.name.substring(0, 2);
+          if (isSupportShift) {
+            badgeLabel += '*';
+          }
           badgeClass = `shift-${matchedShift.colorClass || 'custom'}`;
         }
       }
 
       // 格子內部 DOM 結構：結合下拉隱形 Selector 以便滑動點擊調整班表
       const cellInner = document.createElement('div');
-      cellInner.className = `roster-cell-inner ${hasConflict ? 'cell-warning-glow' : ''}`;
+      cellInner.className = `roster-cell-inner ${hasConflict ? 'cell-warning-glow' : ''} ${isSupportShift ? 'cell-support-assigned' : ''}`;
       cellInner.dataset.employeeId = employee.id;
       cellInner.dataset.date = dateStr;
       
