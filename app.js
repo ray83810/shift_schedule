@@ -263,6 +263,41 @@ function calculateRestHours(prevShift, nextShift) {
   return rest;
 }
 
+// 4.9 智慧跨月邊界分析器 (Cross-Month Boundary Analyzer)
+function getPreviousMonthBoundaryStats(empId, year, month) {
+  let prevYear = year;
+  let prevMonth = month - 1;
+  if (month === 0) {
+    prevYear = year - 1;
+    prevMonth = 11;
+  }
+  
+  const prevDaysCount = getDaysInMonth(prevYear, prevMonth);
+  let lastShiftId = null;
+  let consecutiveWork = 0;
+  
+  // 1. 取得前一個月最後一天的班別
+  const lastDayDateStr = formatDateISO(prevYear, prevMonth, prevDaysCount);
+  if (state.roster && state.roster[lastDayDateStr] && state.roster[lastDayDateStr][empId]) {
+    lastShiftId = state.roster[lastDayDateStr][empId];
+  }
+  
+  // 2. 往回追溯計算連續上班天數
+  for (let d = prevDaysCount; d >= 1; d--) {
+    const dateStr = formatDateISO(prevYear, prevMonth, d);
+    const shiftId = (state.roster && state.roster[dateStr] && state.roster[dateStr][empId]) || 'OFF';
+    
+    const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO');
+    if (isWork) {
+      consecutiveWork++;
+    } else {
+      break; // 遇到休假就中斷
+    }
+  }
+  
+  return { lastShiftId, consecutiveWork };
+}
+
 // 5. 勞基法與排班規則即時稽核器 (Labor Law Auditor)
 function auditRoster(year, month) {
   const warnings = [];
@@ -276,9 +311,11 @@ function auditRoster(year, month) {
 
   // 一、針對每位客服人員的個人檢查 (7休1、11小時輪班間隔、每月休天數)
   state.staff.forEach(employee => {
-    let consecutiveWorkDays = 0;
+    // 智慧跨月邊界歷史追溯檢查
+    const boundary = getPreviousMonthBoundaryStats(employee.id, year, month);
+    let consecutiveWorkDays = boundary.consecutiveWork;
     let totalOffDays = 0;
-    let prevShiftId = null;
+    let prevShiftId = boundary.lastShiftId;
 
     for (let day = 1; day <= daysCount; day++) {
       const dateStr = formatDateISO(year, month, day);
@@ -305,20 +342,21 @@ function auditRoster(year, month) {
       }
 
       // 2. 11小時輪班間隔檢查 (與前一天對比)
-      if (day > 1 && prevShiftId && shiftId) {
+      if (prevShiftId && shiftId) {
         const prevShift = shiftMap.get(prevShiftId);
         const currShift = shiftMap.get(shiftId);
 
         if (prevShift && currShift && prevShiftId !== 'OFF' && prevShiftId !== 'PTO' && shiftId !== 'OFF' && shiftId !== 'PTO') {
           const restHours = calculateRestHours(prevShift, currShift);
           if (restHours < 11) {
+            const dayLabel = day === 1 ? '上月底' : `${day - 1}日`;
             warnings.push({
               type: 'labor_rest_11',
               severity: 'error',
               employeeId: employee.id,
               employeeName: employee.name,
               date: dateStr,
-              message: `${employee.name} 於 ${day - 1}日排「${prevShift.name}」(${prevShift.start}-${prevShift.end})，本日排「${currShift.name}」(${currShift.start}-${currShift.end})，輪班休息間隔僅 ${restHours.toFixed(1)} 小時，違反勞基法規定的「輪班間隔至少11小時」！`
+              message: `${employee.name} 於 ${dayLabel}排「${prevShift.name}」(${prevShift.start}-${prevShift.end})，本日排「${currShift.name}」(${currShift.start}-${currShift.end})，輪班休息間隔僅 ${restHours.toFixed(1)} 小時，違反勞基法規定的「輪班間隔至少11小時」！`
             });
           }
         }
@@ -459,15 +497,18 @@ function runAutoScheduler() {
   // 2. 追蹤每位員工在演算法執行過程中的動態狀態
   const staffStates = {};
   staffList.forEach(emp => {
+    // 智慧跨月邊界排班歷史追溯 (如果存在)，承接上月連續上班天數與月底班別，確保勞基法合規性
+    const boundary = getPreviousMonthBoundaryStats(emp.id, year, month);
+    
     staffStates[emp.id] = {
-      consecutiveWork: 0,      // 連續上班天數
+      consecutiveWork: boundary.consecutiveWork,      // 承接上月連續上班天數
       totalOff: 0,             // 累計休假天數 (OFF + PTO)
       weekendWorkCount: 0,     // 累計週末加班天數
       xinyiDays: 0,            // 實際進信義辦公室天數 (平日早班 A 天數)
       weekdayOffCount: 0,      // 平日休假天數
       weekendOffCount: 0,      // 假日休假天數
       shiftCounts: {},         // 記錄各班別被排了幾次 { shiftId: count }
-      lastShiftId: null        // 前一天的班次
+      lastShiftId: boundary.lastShiftId        // 承接上月月底的班次
     };
     shiftList.forEach(s => {
       staffStates[emp.id].shiftCounts[s.id] = 0;
@@ -814,8 +855,10 @@ function isEmployeeRosterCompliant(rosterCopy, daysCount, empId) {
   shiftMap.set('OFF', { id: 'OFF', name: '休假', start: '00:00', end: '00:00' });
   shiftMap.set('PTO', { id: 'PTO', name: '特休', start: '00:00', end: '00:00' });
 
-  let consecutive = 0;
-  let prevId = null;
+  // 智慧跨月邊界檢查，承接上月歷史數據以校驗連續天數及輪班間隔
+  const boundary = getPreviousMonthBoundaryStats(empId, state.currentYear, state.currentMonth);
+  let consecutive = boundary.consecutiveWork;
+  let prevId = boundary.lastShiftId;
 
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
@@ -833,7 +876,7 @@ function isEmployeeRosterCompliant(rosterCopy, daysCount, empId) {
     }
 
     // 2. 11小時輪班間隔檢查
-    if (d > 1 && prevId && shiftId) {
+    if (prevId && shiftId) {
       const prevS = shiftMap.get(prevId);
       const currS = shiftMap.get(shiftId);
       if (prevS && currS && prevId !== 'OFF' && prevId !== 'PTO' && shiftId !== 'OFF' && shiftId !== 'PTO') {
