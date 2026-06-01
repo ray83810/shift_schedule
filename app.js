@@ -1048,6 +1048,29 @@ function renderRosterGrid() {
     return;
   }
 
+  // 依照 早班(A) > 中班(B) > 晚班(C) > 獨立班(D) 的排班比重與狀態進行排序
+  const sortedStaff = [...staffList].sort((emp1, emp2) => {
+    const getShiftWeight = (emp) => {
+      const counts = { A: 0, B: 0, C: 0, D: 0 };
+      for (let d = 1; d <= daysCount; d++) {
+        const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+        const sId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+        if (counts[sId] !== undefined) counts[sId]++;
+      }
+      // 早班(A)權重10000，中班(B)100，晚班(C)1，獨立班(D)0.01
+      return counts.A * 10000 + counts.B * 100 + counts.C * 1 + counts.D * 0.01;
+    };
+    
+    // 獨立排班人員排最後
+    const score1 = emp1.isIndependent ? -100000 : getShiftWeight(emp1);
+    const score2 = emp2.isIndependent ? -100000 : getShiftWeight(emp2);
+    
+    if (score1 !== score2) {
+      return score2 - score1;
+    }
+    return emp1.name.localeCompare(emp2.name);
+  });
+
   // --- 1. 產生表頭 (Header Row 1 & 2) ---
   const headerRow = document.createElement('tr');
   
@@ -1079,7 +1102,7 @@ function renderRosterGrid() {
   // 先獲取即時合規稽核結果，用以動態畫出紅光警告
   const currentWarnings = auditRoster(state.currentYear, state.currentMonth);
 
-  staffList.forEach(employee => {
+  sortedStaff.forEach(employee => {
     const row = document.createElement('tr');
     
     // 客服姓名
@@ -1559,6 +1582,21 @@ function renderFairnessDashboard() {
       }
     }
     return { emp, counts };
+  });
+
+  // 依照 早班(A) > 中班(B) > 晚班(C) > 獨立班(D) 的排班比重對統計資料進行相同排序，維持畫面一致性
+  stats.sort((s1, s2) => {
+    const getWeight = (st) => {
+      return st.counts.A * 10000 + st.counts.B * 100 + st.counts.C * 1 + st.counts.custom * 0.01;
+    };
+    
+    const score1 = s1.emp.isIndependent ? -100000 : getWeight(s1);
+    const score2 = s2.emp.isIndependent ? -100000 : getWeight(s2);
+    
+    if (score1 !== score2) {
+      return score2 - score1;
+    }
+    return s1.emp.name.localeCompare(s2.emp.name);
   });
 
   // 渲染公平性進度條
