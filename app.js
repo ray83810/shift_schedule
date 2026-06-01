@@ -25,57 +25,93 @@ const DEFAULT_STAFF = [
     id: 'staff_1',
     name: 'Alex Chen',
     pto: ['2026-05-01', '2026-05-15'],
-    defaultOffDays: [0, 6]
+    defaultOffDays: [0, 6],
+    qaScore: 92.5,
+    techAcw: 110,
+    techAht: 280,
+    tempSupport: 4.0
   },
   {
     id: 'staff_2',
     name: 'Howard Chen',
     pto: ['2026-05-10'],
-    defaultOffDays: [0, 6]
+    defaultOffDays: [0, 6],
+    qaScore: 88.0,
+    techAcw: 125,
+    techAht: 310,
+    tempSupport: 0.0
   },
   {
     id: 'staff_3',
     name: 'Amber Wang',
     pto: ['2026-05-02', '2026-05-03'],
-    defaultOffDays: [0, 6]
+    defaultOffDays: [0, 6],
+    qaScore: 95.0,
+    techAcw: 95,
+    techAht: 250,
+    tempSupport: 2.0
   },
   {
     id: 'staff_4',
     name: 'Jacky Lee',
     pto: [],
-    defaultOffDays: [0, 6]
+    defaultOffDays: [0, 6],
+    qaScore: 81.0,
+    techAcw: 145,
+    techAht: 330,
+    tempSupport: 9.0
   },
   {
     id: 'staff_5',
     name: 'Evan Liu',
     pto: ['2026-05-20'],
-    defaultOffDays: [0, 6]
+    defaultOffDays: [0, 6],
+    qaScore: 87.5,
+    techAcw: 115,
+    techAht: 295,
+    tempSupport: 0.0
   },
   {
     id: 'staff_6',
     name: 'Jian Kai Ding',
     pto: ['2026-05-28'],
-    defaultOffDays: [0, 6]
+    defaultOffDays: [0, 6],
+    qaScore: 90.0,
+    techAcw: 120,
+    techAht: 300,
+    tempSupport: 1.0
   },
   {
     id: 'staff_7',
     name: 'Rex Liao',
     pto: [],
-    defaultOffDays: [0, 6]
+    defaultOffDays: [0, 6],
+    qaScore: 84.5,
+    techAcw: 130,
+    techAht: 320,
+    tempSupport: 0.0
   },
   {
     id: 'staff_8',
     name: 'Molly Song',
     isIndependent: true,
     pto: [],
-    defaultOffDays: [1, 2]
+    defaultOffDays: [1, 2],
+    qaScore: 89.0,
+    techAcw: 118,
+    techAht: 290,
+    tempSupport: 0.0
   },
   {
     id: 'staff_9',
     name: 'Sherry Lin',
     isIndependent: true,
     pto: [],
-    defaultOffDays: [3, 4]
+    defaultOffDays: [3, 4],
+    qaScore: 91.0,
+    techAcw: 112,
+    techAht: 285,
+    tempSupport: 0.0
   }
 ];
 
@@ -417,6 +453,9 @@ function runAutoScheduler() {
       consecutiveWork: 0,      // 連續上班天數
       totalOff: 0,             // 累計休假天數 (OFF + PTO)
       weekendWorkCount: 0,     // 累計週末加班天數
+      xinyiDays: 0,            // 實際進信義辦公室天數 (平日早班 A 天數)
+      weekdayOffCount: 0,      // 平日休假天數
+      weekendOffCount: 0,      // 假日休假天數
       shiftCounts: {},         // 記錄各班別被排了幾次 { shiftId: count }
       lastShiftId: null        // 前一天的班次
     };
@@ -427,6 +466,10 @@ function runAutoScheduler() {
 
   // 計算每人理想的工作天數目標
   const targetWorkDays = daysCount - state.daysOff;
+
+  // 計算常規客服專員的平均 QA 分數 (供平日早班績效優先權使用)
+  const regularEmps = staffList.filter(e => !e.isIndependent);
+  const averageQA = regularEmps.reduce((sum, e) => sum + (e.qaScore !== undefined ? e.qaScore : 85), 0) / (regularEmps.length || 1);
 
   // 3. 逐日進行啟發式排班 (Day 1 to N)
   for (let d = 1; d <= daysCount; d++) {
@@ -467,9 +510,15 @@ function runAutoScheduler() {
       const status = newRoster[dateStr][emp.id];
       if (status === 'PTO' || status === 'OFF') {
         scheduledToday.add(emp.id);
-        staffStates[emp.id].totalOff++;
-        staffStates[emp.id].consecutiveWork = 0;
-        staffStates[emp.id].lastShiftId = status;
+        const st = staffStates[emp.id];
+        st.totalOff++;
+        st.consecutiveWork = 0;
+        st.lastShiftId = status;
+        if (isWeekend) {
+          st.weekendOffCount++;
+        } else {
+          st.weekdayOffCount++;
+        }
       }
     });
 
@@ -533,6 +582,28 @@ function runAutoScheduler() {
           score += 15; // 已經休滿假了，更應該多安排工作
         }
 
+        // 6. Asurion 早班績效優先權與信義辦公室綁定 (Rule III)
+        if (neededShift.id === 'A' && !isWeekend) {
+          const empQA = emp.qaScore !== undefined ? emp.qaScore : 85;
+          if (empQA < averageQA) {
+            // 績效未達平均：優先安排早班 (A)，且 Tech-ACW 越高越優先
+            score += 2000;
+            score += (emp.techAcw || 0) * 0.5;
+          } else {
+            // 績效達標者：優先安排給信義早班天數較少者
+            score += 1000;
+            score -= (empState.xinyiDays || 0) * 80;
+          }
+        }
+
+        // 7. 平日與假日休假拆分公平性評分權重 (Rule III)
+        // 優先將今日班次分派給已休假次數較多的人，以留空給休假次數較少的人
+        if (isWeekend) {
+          score += (empState.weekendOffCount || 0) * 15;
+        } else {
+          score += (empState.weekdayOffCount || 0) * 15;
+        }
+
         // 判斷是否會引發勞基法嚴重衝突
         const isViolation = (wouldExceedConsecutive || wouldViolateRest);
 
@@ -562,6 +633,10 @@ function runAutoScheduler() {
         if (isWeekend) {
           st.weekendWorkCount++;
         }
+        // 更新信義辦公室天數 (平日早班)
+        if (neededShift.id === 'A' && !isWeekend) {
+          st.xinyiDays++;
+        }
       }
     });
 
@@ -575,6 +650,11 @@ function runAutoScheduler() {
         st.totalOff++;
         st.consecutiveWork = 0;
         st.lastShiftId = 'OFF';
+        if (isWeekend) {
+          st.weekendOffCount++;
+        } else {
+          st.weekdayOffCount++;
+        }
       }
     });
   }
@@ -1013,22 +1093,14 @@ function renderRosterGrid() {
       cellInner.dataset.employeeId = employee.id;
       cellInner.dataset.date = dateStr;
       
-      // 建立下拉選單內容 (隱形於滑鼠懸停)
+      // 建立下拉選單內容 (隱形於滑鼠懸停) - 任何人都可以直接手動調整為任何班別 (包括獨立班D)
       let selectOptions = `
         <option value="OFF" ${assignedShiftId === 'OFF' ? 'selected' : ''}>休假 (OFF)</option>
         <option value="PTO" ${assignedShiftId === 'PTO' ? 'selected' : ''}>特休 (PTO)</option>
       `;
-      if (employee.isIndependent) {
-        const matchedShift = shiftList.find(s => s.id === 'D');
-        if (matchedShift) {
-          selectOptions += `<option value="D" ${assignedShiftId === 'D' ? 'selected' : ''}>${matchedShift.name} (${matchedShift.start}-${matchedShift.end})</option>`;
-        }
-      } else {
-        shiftList.forEach(s => {
-          if (s.id === 'D') return; // 常規人員不可選獨立班
-          selectOptions += `<option value="${s.id}" ${assignedShiftId === s.id ? 'selected' : ''}>${s.name} (${s.start}-${s.end})</option>`;
-        });
-      }
+      shiftList.forEach(s => {
+        selectOptions += `<option value="${s.id}" ${assignedShiftId === s.id ? 'selected' : ''}>${s.name} (${s.start}-${s.end})</option>`;
+      });
 
       cellInner.innerHTML = `
         <span class="shift-badge ${badgeClass}">${badgeLabel}</span>
@@ -1315,23 +1387,119 @@ function renderFairnessDashboard() {
     return;
   }
 
+  // 1. 計算每月最佳表現獎勵看板 (Monthly Performance Champions)
+  let winnerA = null;
+  let winnerB = null;
+
+  staffList.forEach(emp => {
+    // Month Champion A: Highest QA, tie-breaker: shortest Tech-AHT
+    if (!winnerA) {
+      winnerA = emp;
+    } else {
+      const empQA = emp.qaScore !== undefined ? emp.qaScore : 0;
+      const winQA = winnerA.qaScore !== undefined ? winnerA.qaScore : 0;
+      if (empQA > winQA) {
+        winnerA = emp;
+      } else if (empQA === winQA) {
+        const empAHT = emp.techAht !== undefined ? emp.techAht : Infinity;
+        const winAHT = winnerA.techAht !== undefined ? winnerA.techAht : Infinity;
+        if (empAHT < winAHT) {
+          winnerA = emp;
+        }
+      }
+    }
+
+    // Month Champion B: Highest Temp Support, tie-breaker: shortest Tech-AHT
+    if (!winnerB) {
+      winnerB = emp;
+    } else {
+      const empSupport = emp.tempSupport !== undefined ? emp.tempSupport : 0;
+      const winSupport = winnerB.tempSupport !== undefined ? winnerB.tempSupport : 0;
+      if (empSupport > winSupport) {
+        winnerB = emp;
+      } else if (empSupport === winSupport) {
+        const empAHT = emp.techAht !== undefined ? emp.techAht : Infinity;
+        const winAHT = winnerB.techAht !== undefined ? winnerB.techAht : Infinity;
+        if (empAHT < winAHT) {
+          winnerB = emp;
+        }
+      }
+    }
+  });
+
+  if (winnerA && winnerB) {
+    const champContainer = document.createElement('div');
+    champContainer.className = 'champion-cards-container';
+    champContainer.style.cssText = 'display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px;';
+    champContainer.innerHTML = `
+      <!-- Winner A -->
+      <div class="champion-card champion-a" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.03)); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 12px 14px; position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.05); transition: all 0.3s ease;">
+        <div style="position: absolute; right: -8px; top: -8px; font-size: 3.5rem; opacity: 0.1; color: #fbbf24; transform: rotate(15deg); font-family: Outfit; user-select: none;">🏆</div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="font-size: 1.6rem; background: rgba(245, 158, 11, 0.15); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">🥇</div>
+          <div style="flex: 1;">
+            <h4 style="margin: 0; color: #fbbf24; font-family: Outfit; font-size: 0.85rem; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <span>服務品質特優獎</span>
+              <span style="font-size: 0.65rem; background: rgba(245, 158, 11, 0.15); padding: 1px 5px; border-radius: 99px; color: #fbbf24; font-weight: 500;">QA Champion</span>
+            </h4>
+            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-top: 3px;">${winnerA.name}</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              上月 QA: <strong style="color: #fbbf24;">${winnerA.qaScore}%</strong> / AHT: <strong>${winnerA.techAht}秒</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Winner B -->
+      <div class="champion-card champion-b" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(96, 165, 250, 0.03)); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: var(--radius-md); padding: 12px 14px; position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.05); transition: all 0.3s ease;">
+        <div style="position: absolute; right: -8px; top: -8px; font-size: 3.5rem; opacity: 0.1; color: #60a5fa; transform: rotate(15deg); font-family: Outfit; user-select: none;">⚡</div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="font-size: 1.6rem; background: rgba(59, 130, 246, 0.15); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">🥈</div>
+          <div style="flex: 1;">
+            <h4 style="margin: 0; color: #60a5fa; font-family: Outfit; font-size: 0.85rem; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <span>多能支援傑出獎</span>
+              <span style="font-size: 0.65rem; background: rgba(59, 130, 246, 0.15); padding: 1px 5px; border-radius: 99px; color: #60a5fa; font-weight: 500;">Support Champion</span>
+            </h4>
+            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-top: 3px;">${winnerB.name}</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+              支援時數: <strong style="color: #60a5fa;">${winnerB.tempSupport}小時</strong> / AHT: <strong>${winnerB.techAht}秒</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(champContainer);
+  }
+
   // 統計每個人排班各項指標
   const stats = staffList.map(emp => {
-    const counts = { A: 0, B: 0, C: 0, OFF: 0, PTO: 0, custom: 0, totalWorkHours: 0 };
+    const counts = { 
+      A: 0, B: 0, C: 0, OFF: 0, PTO: 0, custom: 0, totalWorkHours: 0,
+      xinyiDays: 0, weekdayOffCount: 0, weekendOffCount: 0
+    };
     
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
 
       if (shiftId === 'OFF') {
         counts.OFF++;
+        if (isWeekend) counts.weekendOffCount++;
+        else counts.weekdayOffCount++;
       } else if (shiftId === 'PTO') {
         counts.PTO++;
+        if (isWeekend) counts.weekendOffCount++;
+        else counts.weekdayOffCount++;
       } else {
         // 累計各班別工時 (預設三班均為 9 小時，扣除休息時間實計 8 小時，此處簡單用 8 小時估算)
         counts.totalWorkHours += 8;
 
-        if (shiftId === 'A') counts.A++;
+        if (shiftId === 'A') {
+          counts.A++;
+          if (!isWeekend) counts.xinyiDays++;
+        }
         else if (shiftId === 'B') counts.B++;
         else if (shiftId === 'C') counts.C++;
         else counts.custom++;
@@ -1362,12 +1530,16 @@ function renderFairnessDashboard() {
         <span class="fairness-staff-name">${emp.name}</span>
         <span class="fairness-staff-hours">實計工時: ${counts.totalWorkHours} hrs (休假 ${totalOff} 天)</span>
       </div>
-      <div class="fairness-progress-bar-container" title="早班 ${counts.A}天, 中班 ${counts.B}天, 晚班 ${counts.C}天, 自訂 ${counts.custom}天, 休假/特休 ${totalOff}天">
+      <div class="fairness-progress-bar-container" title="早班 ${counts.A}天, 中班 ${counts.B}天, 晚班 ${counts.C}天, 自訂 ${counts.custom}天, 休假/特休 ${totalOff}天" style="margin-bottom: 4px;">
         <div class="fairness-bar-segment fairness-bar-early" style="width: ${pctA}%"></div>
         <div class="fairness-bar-segment fairness-bar-middle" style="width: ${pctB}%"></div>
         <div class="fairness-bar-segment fairness-bar-late" style="width: ${pctC}%"></div>
         <div class="fairness-bar-segment fairness-bar-custom" style="width: ${pctCustom}%"></div>
         <div class="fairness-bar-segment fairness-bar-off" style="width: ${pctOff}%"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 12px; padding: 0 2px; border-bottom: 1px dashed rgba(255,255,255,0.05); padding-bottom: 6px;">
+        <span>🏢 信義辦公: <strong style="color: var(--accent-blue);">${counts.xinyiDays}</strong> 天</span>
+        <span>🌴 平日休: <strong style="color: var(--text-primary);">${counts.weekdayOffCount}</strong> 天 / 假日休: <strong style="color: var(--text-primary);">${counts.weekendOffCount}</strong> 天</span>
       </div>
     `;
     container.appendChild(item);
@@ -1659,6 +1831,13 @@ function openEmployeeConfigModal(empId) {
   // 2. 渲染休假預設複選框
   renderModalDefaultOffDays();
 
+  // 3. 填入績效指標與是否為獨立排班人員狀態
+  document.getElementById('input-emp-qa').value = emp.qaScore !== undefined ? emp.qaScore : 85;
+  document.getElementById('input-emp-acw').value = emp.techAcw !== undefined ? emp.techAcw : 120;
+  document.getElementById('input-emp-aht').value = emp.techAht !== undefined ? emp.techAht : 300;
+  document.getElementById('input-emp-support').value = emp.tempSupport !== undefined ? emp.tempSupport : 0;
+  document.getElementById('input-emp-independent').checked = !!emp.isIndependent;
+
   // 顯示 Modal Overlay
   document.getElementById('modal-employee-config').classList.remove('display-none');
 }
@@ -1803,9 +1982,23 @@ function saveEmployeeConfig() {
   const empIndex = state.staff.findIndex(e => e.id === activeConfigEmpId);
   if (empIndex === -1) return;
 
-  // 套用暫存變數
+  // 套用暫存與輸入變數
   state.staff[empIndex].pto = tempPtoDays;
   state.staff[empIndex].defaultOffDays = tempDefaultOffDays;
+  
+  state.staff[empIndex].qaScore = parseFloat(document.getElementById('input-emp-qa').value) || 85;
+  state.staff[empIndex].techAcw = parseInt(document.getElementById('input-emp-acw').value) || 120;
+  state.staff[empIndex].techAht = parseInt(document.getElementById('input-emp-aht').value) || 300;
+  state.staff[empIndex].tempSupport = parseFloat(document.getElementById('input-emp-support').value) || 0;
+  
+  const wasIndependent = !!state.staff[empIndex].isIndependent;
+  const isIndependent = document.getElementById('input-emp-independent').checked;
+  state.staff[empIndex].isIndependent = isIndependent;
+
+  // 獨立排班身份切換時，自動修正預設休假星期
+  if (isIndependent !== wasIndependent) {
+    state.staff[empIndex].defaultOffDays = isIndependent ? [1, 2] : [0, 6];
+  }
 
   // 如果排程中有 PTO 的日子排了其他班，自動修正為休假
   tempPtoDays.forEach(dateStr => {
