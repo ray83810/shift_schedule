@@ -465,6 +465,28 @@ function auditRoster(year, month) {
 }
 
 // 6. 一鍵智能自動排班引擎 (CSP Backtracking Heuristic Engine)
+
+// 輔助函數：快速校驗單一員工在暫存班表中是否合乎「連續上班不超過 maxDays 天」的限制
+function isRosterCompliantWithMaxConsecutive(rosterCopy, empId, maxDays = 5) {
+  const boundary = getPreviousMonthBoundaryStats(empId, state.currentYear, state.currentMonth);
+  let consecutive = boundary.consecutiveWork;
+  const daysCount = getDaysInMonth(state.currentYear, state.currentMonth);
+
+  for (let d = 1; d <= daysCount; d++) {
+    const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+    const shiftId = rosterCopy[dateStr][empId];
+    if (shiftId === 'OFF' || shiftId === 'PTO') {
+      consecutive = 0;
+    } else {
+      consecutive++;
+      if (consecutive > maxDays) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 function runAutoScheduler() {
   const year = state.currentYear;
   const month = state.currentMonth;
@@ -484,9 +506,8 @@ function runAutoScheduler() {
     
     // 1. 初始化該專員在當月的初始狀態
     const empRoster = {}; // dateStr -> shiftId
-    const offDates = [];  // 已排定為預設休假 (OFF) 的日期
+    const offDates = [];  // 已排定為休假 (OFF) 的日期
     const ptoDates = [];  // 已排定為特休 (PTO) 的日期
-    const workCandidates = []; // 待指派固定班別的日期
     
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = formatDateISO(year, month, d);
@@ -501,56 +522,125 @@ function runAutoScheduler() {
         offDates.push(dateStr);
       } else {
         empRoster[dateStr] = null;
-        workCandidates.push(dateStr);
+      }
+    }
+
+    // 2. 進行連五天強行打斷 Pass (確保連續工作不超過 5 天，並承接上月底連續上班天數)
+    const boundary = getPreviousMonthBoundaryStats(emp.id, year, month);
+    let consecutive = boundary.consecutiveWork;
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(year, month, d);
+      if (empRoster[dateStr] === 'OFF' || empRoster[dateStr] === 'PTO') {
+        consecutive = 0;
+      } else {
+        if (consecutive >= 5) {
+          // 強制改為 OFF 以打斷連五
+          empRoster[dateStr] = 'OFF';
+          offDates.push(dateStr);
+          consecutive = 0;
+        } else {
+          consecutive++;
+        }
       }
     }
     
-    // 2. 調整休假天數，使其精準等於目標月休天數
+    // 3. 調整休假天數，使其精準等於目標月休天數
     let currentOffCount = ptoDates.length + offDates.length;
     const targetOff = state.daysOff;
     
+    // 重新取得目前所有的待排工作日 (null)
+    const getWorkCandidates = () => {
+      const list = [];
+      for (let d = 1; d <= daysCount; d++) {
+        const dateStr = formatDateISO(year, month, d);
+        if (empRoster[dateStr] === null) {
+          list.push(dateStr);
+        }
+      }
+      return list;
+    };
+    
     if (currentOffCount < targetOff) {
-      // 假不夠：隨機打亂待排工作日，補足 OFF
-      const needed = targetOff - currentOffCount;
-      if (workCandidates.length > 0) {
-        const shuffled = [...workCandidates].sort(() => Math.random() - 0.5);
+      // 假不夠：隨機在待排工作日中補足 OFF (補 OFF 絕不會造成新的連五，非常安全)
+      let needed = targetOff - currentOffCount;
+      const currentCandidates = getWorkCandidates();
+      if (currentCandidates.length > 0) {
+        const shuffled = [...currentCandidates].sort(() => Math.random() - 0.5);
         const chosen = shuffled.slice(0, Math.min(needed, shuffled.length));
         chosen.forEach(dateStr => {
           empRoster[dateStr] = 'OFF';
         });
       }
     } else if (currentOffCount > targetOff) {
-      // 假太多：將多餘的 OFF 扣除（變回上班）
-      const excess = currentOffCount - targetOff;
+      // 假太多：將多餘的 OFF 扣除（變回上班 null）
+      let excess = currentOffCount - targetOff;
       
-      const nonDefaultOffs = [];
-      const defaultOffs = [];
+      // 區分非預設週休與預設週休的 OFF
+      const eligibleNonDefaultOffs = [];
+      const eligibleDefaultOffs = [];
       
-      offDates.forEach(dateStr => {
-        const d = parseInt(dateStr.split('-')[2]);
-        const dayOfWeek = getDayOfWeek(year, month, d);
-        const isDefaultOff = emp.defaultOffDays && emp.defaultOffDays.includes(dayOfWeek);
-        if (isDefaultOff) {
-          defaultOffs.push(dateStr);
-        } else {
-          nonDefaultOffs.push(dateStr);
+      for (let d = 1; d <= daysCount; d++) {
+        const dateStr = formatDateISO(year, month, d);
+        if (empRoster[dateStr] === 'OFF') {
+          const dayOfWeek = getDayOfWeek(year, month, d);
+          const isDefaultOff = emp.defaultOffDays && emp.defaultOffDays.includes(dayOfWeek);
+          if (isDefaultOff) {
+            eligibleDefaultOffs.push(dateStr);
+          } else {
+            eligibleNonDefaultOffs.push(dateStr);
+          }
         }
-      });
+      }
       
       // 隨機打亂
-      nonDefaultOffs.sort(() => Math.random() - 0.5);
-      defaultOffs.sort(() => Math.random() - 0.5);
+      eligibleNonDefaultOffs.sort(() => Math.random() - 0.5);
+      eligibleDefaultOffs.sort(() => Math.random() - 0.5);
       
-      // 優先扣除非預設休假日的 OFF，再扣除預設休假日的 OFF
-      const allOffCandidates = [...nonDefaultOffs, ...defaultOffs];
-      const chosenToWork = allOffCandidates.slice(0, Math.min(excess, allOffCandidates.length));
+      const allOffCandidates = [...eligibleNonDefaultOffs, ...eligibleDefaultOffs];
       
-      chosenToWork.forEach(dateStr => {
-        empRoster[dateStr] = null; // 設回待填工作日
-      });
+      // 嘗試逐一扣除，扣除前進行安全檢查：扣除後是否仍然滿足連續工作不超過 5 天？
+      let resolvedCount = 0;
+      for (const dateStr of allOffCandidates) {
+        if (resolvedCount >= excess) break;
+        
+        // 暫定改為上班
+        empRoster[dateStr] = null;
+        
+        // 建立臨時的單人 roster 用於合規檢查
+        const rosterCopy = {};
+        for (let d = 1; d <= daysCount; d++) {
+          const dStr = formatDateISO(year, month, d);
+          rosterCopy[dStr] = { [emp.id]: empRoster[dStr] };
+        }
+        
+        if (isRosterCompliantWithMaxConsecutive(rosterCopy, emp.id, 5)) {
+          // 合規！成功扣除
+          resolvedCount++;
+        } else {
+          // 不合規！復原為 OFF
+          empRoster[dateStr] = 'OFF';
+        }
+      }
+      
+      // 如果極端情況下仍有扣不掉的假，強制扣除以保障月休天數
+      let stillExcess = excess - resolvedCount;
+      if (stillExcess > 0) {
+        const remainingOffs = [];
+        for (let d = 1; d <= daysCount; d++) {
+          const dateStr = formatDateISO(year, month, d);
+          if (empRoster[dateStr] === 'OFF') {
+            remainingOffs.push(dateStr);
+          }
+        }
+        remainingOffs.sort(() => Math.random() - 0.5);
+        const forceToWork = remainingOffs.slice(0, Math.min(stillExcess, remainingOffs.length));
+        forceToWork.forEach(dateStr => {
+          empRoster[dateStr] = null;
+        });
+      }
     }
     
-    // 3. 將剩餘的所有待排工作日填入該專員的「預設固定班別」
+    // 4. 將剩餘的所有待排工作日填入該專員的「預設固定班別」
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = formatDateISO(year, month, d);
       if (empRoster[dateStr] === null) {
@@ -561,7 +651,7 @@ function runAutoScheduler() {
     }
   });
 
-  // 4. 將結果套用至系統狀態並標記未儲存
+  // 5. 將結果套用至系統狀態並標記未儲存
   state.roster = newRoster;
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
