@@ -29,7 +29,8 @@ const DEFAULT_STAFF = [
     qaScore: 92.5,
     techAcw: 110,
     techAht: 280,
-    tempSupport: 4.0
+    tempSupport: 4.0,
+    defaultWorkShift: 'A'
   },
   {
     id: 'staff_2',
@@ -39,7 +40,8 @@ const DEFAULT_STAFF = [
     qaScore: 88.0,
     techAcw: 125,
     techAht: 310,
-    tempSupport: 0.0
+    tempSupport: 0.0,
+    defaultWorkShift: 'B'
   },
   {
     id: 'staff_3',
@@ -49,7 +51,8 @@ const DEFAULT_STAFF = [
     qaScore: 95.0,
     techAcw: 95,
     techAht: 250,
-    tempSupport: 2.0
+    tempSupport: 2.0,
+    defaultWorkShift: 'A'
   },
   {
     id: 'staff_4',
@@ -59,7 +62,8 @@ const DEFAULT_STAFF = [
     qaScore: 81.0,
     techAcw: 145,
     techAht: 330,
-    tempSupport: 9.0
+    tempSupport: 9.0,
+    defaultWorkShift: 'C'
   },
   {
     id: 'staff_5',
@@ -69,7 +73,8 @@ const DEFAULT_STAFF = [
     qaScore: 87.5,
     techAcw: 115,
     techAht: 295,
-    tempSupport: 0.0
+    tempSupport: 0.0,
+    defaultWorkShift: 'B'
   },
   {
     id: 'staff_6',
@@ -79,7 +84,8 @@ const DEFAULT_STAFF = [
     qaScore: 90.0,
     techAcw: 120,
     techAht: 300,
-    tempSupport: 1.0
+    tempSupport: 1.0,
+    defaultWorkShift: 'A'
   },
   {
     id: 'staff_7',
@@ -89,7 +95,8 @@ const DEFAULT_STAFF = [
     qaScore: 84.5,
     techAcw: 130,
     techAht: 320,
-    tempSupport: 0.0
+    tempSupport: 0.0,
+    defaultWorkShift: 'C'
   },
   {
     id: 'staff_8',
@@ -100,7 +107,8 @@ const DEFAULT_STAFF = [
     qaScore: 89.0,
     techAcw: 118,
     techAht: 290,
-    tempSupport: 0.0
+    tempSupport: 0.0,
+    defaultWorkShift: 'D'
   },
   {
     id: 'staff_9',
@@ -110,7 +118,8 @@ const DEFAULT_STAFF = [
     qaScore: 91.0,
     techAcw: 112,
     techAht: 285,
-    tempSupport: 0.0
+    tempSupport: 0.0,
+    defaultWorkShift: 'A'
   }
 ];
 
@@ -147,6 +156,25 @@ function initDatabase() {
             emp.defaultOffDays = (emp.name === 'Molly Song') ? [1, 2] : [3, 4];
           } else {
             emp.defaultOffDays = [0, 6];
+          }
+        }
+      });
+
+      // 自動升級檢測：若舊快取名單中沒有 defaultWorkShift 欄位，自動升級為預設班別
+      state.staff.forEach(emp => {
+        if (!emp.defaultWorkShift) {
+          if (emp.isIndependent) {
+            emp.defaultWorkShift = 'D';
+          } else {
+            if (emp.name === 'Alex Chen' || emp.name === 'Amber Wang' || emp.name === 'Jian Kai Ding' || emp.name === 'Sherry Lin') {
+              emp.defaultWorkShift = 'A';
+            } else if (emp.name === 'Howard Chen' || emp.name === 'Evan Liu') {
+              emp.defaultWorkShift = 'B';
+            } else if (emp.name === 'Jacky Lee' || emp.name === 'Rex Liao') {
+              emp.defaultWorkShift = 'C';
+            } else {
+              emp.defaultWorkShift = 'A';
+            }
           }
         }
       });
@@ -442,337 +470,98 @@ function runAutoScheduler() {
   const month = state.currentMonth;
   const daysCount = getDaysInMonth(year, month);
   const staffList = state.staff;
-  const shiftList = state.shifts;
 
-  // 1. 初始化空班表，並將每人的 PTO 預先鎖定排休 (OFF/PTO)
   const newRoster = {};
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(year, month, d);
     newRoster[dateStr] = {};
-    staffList.forEach(emp => {
-      if (emp.pto.includes(dateStr)) {
-        newRoster[dateStr][emp.id] = 'PTO';
-      } else {
-        newRoster[dateStr][emp.id] = null; // 待指派
-      }
-    });
   }
 
-  // 1.5. 針對常規客服專員，如果 [特休天數 + 當月預設休假天數] < 目標休假天數 (state.daysOff)
-  // 將差額 (多餘的休假) 隨機排入上班日中 (避開預設休假日與特休日)
   staffList.forEach(emp => {
-    if (emp.isIndependent) return;
-
-    const ptoSet = new Set(emp.pto);
-    const defaultOffDates = [];
-    const potentialWorkDates = [];
-
+    // 優先使用該專員設定的預設固定班別。若無設定，則依獨立排班狀態預設：獨立為 D，常規為 A
+    const defShift = emp.defaultWorkShift || (emp.isIndependent ? 'D' : 'A');
+    const ptoSet = new Set(emp.pto || []);
+    
+    // 1. 初始化該專員在當月的初始狀態
+    const empRoster = {}; // dateStr -> shiftId
+    const offDates = [];  // 已排定為預設休假 (OFF) 的日期
+    const ptoDates = [];  // 已排定為特休 (PTO) 的日期
+    const workCandidates = []; // 待指派固定班別的日期
+    
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = formatDateISO(year, month, d);
-      if (ptoSet.has(dateStr)) continue;
-
       const dayOfWeek = getDayOfWeek(year, month, d);
       const isDefaultOff = emp.defaultOffDays && emp.defaultOffDays.includes(dayOfWeek);
-      if (isDefaultOff) {
-        defaultOffDates.push(dateStr);
-      } else {
-        potentialWorkDates.push(dateStr);
-      }
-    }
-
-    const presetOffCount = ptoSet.size + defaultOffDates.length;
-    const extraOffNeeded = state.daysOff - presetOffCount;
-
-    if (extraOffNeeded > 0 && potentialWorkDates.length > 0) {
-      // 隨機打亂上班日
-      const shuffledWorkDates = [...potentialWorkDates].sort(() => Math.random() - 0.5);
-      const chosenExtraOffDates = shuffledWorkDates.slice(0, extraOffNeeded);
-
-      chosenExtraOffDates.forEach(dateStr => {
-        newRoster[dateStr][emp.id] = 'OFF';
-      });
-    }
-  });
-
-  // 2. 追蹤每位員工在演算法執行過程中的動態狀態
-  const staffStates = {};
-  staffList.forEach(emp => {
-    // 智慧跨月邊界排班歷史追溯 (如果存在)，承接上月連續上班天數與月底班別，確保勞基法合規性
-    const boundary = getPreviousMonthBoundaryStats(emp.id, year, month);
-    
-    staffStates[emp.id] = {
-      consecutiveWork: boundary.consecutiveWork,      // 承接上月連續上班天數
-      totalOff: 0,             // 累計休假天數 (OFF + PTO)
-      weekendWorkCount: 0,     // 累計週末加班天數
-      xinyiDays: 0,            // 實際進信義辦公室天數 (平日早班 A 天數)
-      weekdayOffCount: 0,      // 平日休假天數
-      weekendOffCount: 0,      // 假日休假天數
-      shiftCounts: {},         // 記錄各班別被排了幾次 { shiftId: count }
-      lastShiftId: boundary.lastShiftId        // 承接上月月底的班次
-    };
-    shiftList.forEach(s => {
-      staffStates[emp.id].shiftCounts[s.id] = 0;
-    });
-  });
-
-  // 計算每人理想的工作天數目標
-  const targetWorkDays = daysCount - state.daysOff;
-
-  // 計算常規客服專員的平均 QA 分數 (供平日早班績效優先權使用)
-  const regularEmps = staffList.filter(e => !e.isIndependent);
-  const averageQA = regularEmps.reduce((sum, e) => sum + (e.qaScore !== undefined ? e.qaScore : 85), 0) / (regularEmps.length || 1);
-
-  // 3. 逐日進行啟發式排班 (Day 1 to N)
-  for (let d = 1; d <= daysCount; d++) {
-    const dateStr = formatDateISO(year, month, d);
-    const dayOfWeek = getDayOfWeek(year, month, d);
-    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-
-    // 建立今日待填補的班次需求清單 (例如 A班要2人、B班要1人、C班要1人)
-    // 依班次優先級排序 (通常晚班或中班比較少人想去，優先排；或者依設定的需求量高低排序)
-    const dailyShiftsNeeded = [];
-    shiftList.forEach(shift => {
-      const targetConfig = state.coverageTargets[shift.id] || { weekday: 0, weekend: 0 };
-      const needed = isWeekend ? targetConfig.weekend : targetConfig.weekday;
-      for (let i = 0; i < needed; i++) {
-        dailyShiftsNeeded.push(shift);
-      }
-    });
-
-    // 依據上班時段由晚到早排序需求，這樣最刁鑽的班次（如晚班）能優先分配到最合適的人
-    dailyShiftsNeeded.sort((x, y) => {
-      // 假設晚班(比如15:00)優先排
-      return y.start.localeCompare(x.start);
-    });
-
-    // 記錄今日已被指派的人員，避免重複排班
-    const scheduledToday = new Set();
-
-    // 獨立排班人員在常規排班中視為已安排，以防被排入常規班別
-    staffList.forEach(emp => {
-      if (emp.isIndependent) {
-        scheduledToday.add(emp.id);
-      }
-    });
-
-    // 先把今天已經請特休 (PTO) 或預先排定休假 (OFF) 的人鎖定，並更新其休假狀態
-    staffList.forEach(emp => {
-      if (emp.isIndependent) return;
-      const status = newRoster[dateStr][emp.id];
-      if (status === 'PTO' || status === 'OFF') {
-        scheduledToday.add(emp.id);
-        const st = staffStates[emp.id];
-        st.totalOff++;
-        st.consecutiveWork = 0;
-        st.lastShiftId = status;
-        if (isWeekend) {
-          st.weekendOffCount++;
-        } else {
-          st.weekdayOffCount++;
-        }
-      }
-    });
-
-    // 對於今日的每個班別需求，尋找最合適的客服指派
-    dailyShiftsNeeded.forEach(neededShift => {
-      let bestEmpId = null;
-      let highestScore = -Infinity;
-      let bestIsViolation = false; // 是否必須違反硬限制 (保底人力用)
-
-      staffList.forEach(emp => {
-        if (scheduledToday.has(emp.id)) return; // 今日已安排
-
-        const empState = staffStates[emp.id];
-        
-        // --- 檢查硬性限制 (Hard Constraints) ---
-        // H1. 連續上班天數限制
-        const wouldExceedConsecutive = (empState.consecutiveWork >= 6);
-
-        // H2. 11小時輪班間隔
-        let wouldViolateRest = false;
-        if (empState.lastShiftId && empState.lastShiftId !== 'OFF' && empState.lastShiftId !== 'PTO') {
-          // 查找前一天班次物件與今日待排班次物件
-          const prevS = shiftList.find(s => s.id === empState.lastShiftId);
-          if (prevS) {
-            const rest = calculateRestHours(prevS, neededShift);
-            if (rest < 11) {
-              wouldViolateRest = true;
-            }
-          }
-        }
-
-        // H3. 月休天數上限控制 (若這個人休假天數已經拿滿，且還有其他人沒休滿，應盡量讓其他人休)
-        const hasReachedMaxOff = (empState.totalOff >= state.daysOff);
-
-        // --- 啟發式評分系統 (Heuristic Scoring) ---
-        let score = 100;
-
-        // 1. 預設休假偏好 (若今天是該員工選定的預設休假星期，則該員工如果被排上班會被扣分，促使其留白以自動排為 OFF)
-        if (emp.defaultOffDays && emp.defaultOffDays.includes(dayOfWeek)) {
-          // 今天是該員工的預設休假星期，我們給予大額扣分，以便其他員工優先被分派工作，進而自動將其排為 OFF 休假
-          score -= 150;
-        }
-
-        // 2. 公平性工時控制：優先把班次留給目前排班天數較少的人
-        const scheduledWorkDays = d - 1 - empState.totalOff;
-        const idealWorkRatioSoFar = (d - 1) * (targetWorkDays / daysCount);
-        const workDeficit = idealWorkRatioSoFar - scheduledWorkDays;
-        score += workDeficit * 35; // 缺班越多，分數越高
-
-        // 3. 班別分配均勻度：避免同一個人一直上某個特定班別 (特別是晚班 C)
-        const thisShiftCount = empState.shiftCounts[neededShift.id] || 0;
-        score -= thisShiftCount * 12;
-
-        // 4. 假日分配均勻度
-        if (isWeekend) {
-          score -= empState.weekendWorkCount * 25;
-        }
-
-        // 5. 避免在快休滿假時多排工作
-        if (hasReachedMaxOff) {
-          score += 15; // 已經休滿假了，更應該多安排工作
-        }
-
-        // 6. Asurion 早班績效優先權與信義辦公室綁定 (Rule III)
-        if (neededShift.id === 'A' && !isWeekend) {
-          const empQA = emp.qaScore !== undefined ? emp.qaScore : 85;
-          if (empQA < averageQA) {
-            // 績效未達平均：優先安排早班 (A)，且 Tech-ACW 越高越優先
-            score += 2000;
-            score += (emp.techAcw || 0) * 0.5;
-          } else {
-            // 績效達標者：優先安排給信義早班天數較少者
-            score += 1000;
-            score -= (empState.xinyiDays || 0) * 80;
-          }
-        }
-
-        // 7. 平日與假日休假拆分公平性評分權重 (Rule III)
-        // 優先將今日班次分派給已休假次數較多的人，以留空給休假次數較少的人
-        if (isWeekend) {
-          score += (empState.weekendOffCount || 0) * 15;
-        } else {
-          score += (empState.weekdayOffCount || 0) * 15;
-        }
-
-        // 判斷是否會引發勞基法嚴重衝突
-        const isViolation = (wouldExceedConsecutive || wouldViolateRest);
-
-        // 分數調整：如果違反勞基法，給予極大負分，但保留微量分差作為保底比對
-        if (isViolation) {
-          score -= 10000;
-        }
-
-        // 選擇最優候選人
-        if (score > highestScore) {
-          highestScore = score;
-          bestEmpId = emp.id;
-          bestIsViolation = isViolation;
-        }
-      });
-
-      // 指派班次
-      if (bestEmpId) {
-        newRoster[dateStr][bestEmpId] = neededShift.id;
-        scheduledToday.add(bestEmpId);
-
-        // 更新人員動態狀態
-        const st = staffStates[bestEmpId];
-        st.consecutiveWork++;
-        st.shiftCounts[neededShift.id]++;
-        st.lastShiftId = neededShift.id;
-        if (isWeekend) {
-          st.weekendWorkCount++;
-        }
-        // 更新信義辦公室天數 (平日早班)
-        if (neededShift.id === 'A' && !isWeekend) {
-          st.xinyiDays++;
-        }
-      }
-    });
-
-    // 今日剩餘未安排任何工作的人員，自動排為「休假 (OFF)」
-    staffList.forEach(emp => {
-      if (!scheduledToday.has(emp.id)) {
-        newRoster[dateStr][emp.id] = 'OFF';
-        
-        // 更新休假狀態
-        const st = staffStates[emp.id];
-        st.totalOff++;
-        st.consecutiveWork = 0;
-        st.lastShiftId = 'OFF';
-        if (isWeekend) {
-          st.weekendOffCount++;
-        } else {
-          st.weekdayOffCount++;
-        }
-      }
-    });
-  }
-
-  // 3.5. 獨立排班人員單獨調度 (固定 12:00 班別，不計入常規人力)
-  const independentStaff = staffList.filter(emp => emp.isIndependent);
-  independentStaff.forEach(emp => {
-    // 初始化所有天為 'D' 班，除非已安排為 PTO
-    for (let d = 1; d <= daysCount; d++) {
-      const dateStr = formatDateISO(year, month, d);
-      if (newRoster[dateStr][emp.id] !== 'PTO') {
-        newRoster[dateStr][emp.id] = 'D';
-      }
-    }
-    
-    // 計算當前特休天數
-    let ptoCount = 0;
-    for (let d = 1; d <= daysCount; d++) {
-      const dateStr = formatDateISO(year, month, d);
-      if (newRoster[dateStr][emp.id] === 'PTO') {
-        ptoCount++;
-      }
-    }
-    
-    // 優先使用其選定的 defaultOffDays 作為休假，使總休假天數 (OFF + PTO) 等於 state.daysOff
-    let neededOff = state.daysOff - ptoCount;
-    if (neededOff > 0) {
-      const candidates = [];
-      for (let d = 1; d <= daysCount; d++) {
-        const dateStr = formatDateISO(year, month, d);
-        if (newRoster[dateStr][emp.id] === 'PTO') continue;
-        
-        const dayOfWeek = getDayOfWeek(year, month, d);
-        const isPreferred = emp.defaultOffDays && emp.defaultOffDays.includes(dayOfWeek);
-        candidates.push({ d, dateStr, isPreferred });
-      }
       
-      const preferredDays = candidates.filter(c => c.isPreferred);
-      if (preferredDays.length >= neededOff) {
-        // 我們有足夠的預設休假日！從中均勻挑選 neededOff 天，使假排得更勻稱
-        for (let i = 0; i < neededOff; i++) {
-          const idx = Math.floor((i + 0.5) * (preferredDays.length / neededOff));
-          newRoster[preferredDays[idx].dateStr][emp.id] = 'OFF';
-        }
+      if (ptoSet.has(dateStr)) {
+        empRoster[dateStr] = 'PTO';
+        ptoDates.push(dateStr);
+      } else if (isDefaultOff) {
+        empRoster[dateStr] = 'OFF';
+        offDates.push(dateStr);
       } else {
-        // 預設休假日不夠，全部設為 OFF，剩餘的天數從其他上班日中均勻挑選
-        preferredDays.forEach(c => {
-          newRoster[c.dateStr][emp.id] = 'OFF';
-        });
-        let remainingNeeded = neededOff - preferredDays.length;
-        const remainingDays = candidates.filter(c => !c.isPreferred);
-        const M = remainingDays.length;
-        for (let i = 0; i < remainingNeeded; i++) {
-          const idx = Math.floor((i + 0.5) * (M / remainingNeeded));
-          newRoster[remainingDays[idx].dateStr][emp.id] = 'OFF';
-        }
+        empRoster[dateStr] = null;
+        workCandidates.push(dateStr);
       }
+    }
+    
+    // 2. 調整休假天數，使其精準等於目標月休天數
+    let currentOffCount = ptoDates.length + offDates.length;
+    const targetOff = state.daysOff;
+    
+    if (currentOffCount < targetOff) {
+      // 假不夠：隨機打亂待排工作日，補足 OFF
+      const needed = targetOff - currentOffCount;
+      if (workCandidates.length > 0) {
+        const shuffled = [...workCandidates].sort(() => Math.random() - 0.5);
+        const chosen = shuffled.slice(0, Math.min(needed, shuffled.length));
+        chosen.forEach(dateStr => {
+          empRoster[dateStr] = 'OFF';
+        });
+      }
+    } else if (currentOffCount > targetOff) {
+      // 假太多：將多餘的 OFF 扣除（變回上班）
+      const excess = currentOffCount - targetOff;
+      
+      const nonDefaultOffs = [];
+      const defaultOffs = [];
+      
+      offDates.forEach(dateStr => {
+        const d = parseInt(dateStr.split('-')[2]);
+        const dayOfWeek = getDayOfWeek(year, month, d);
+        const isDefaultOff = emp.defaultOffDays && emp.defaultOffDays.includes(dayOfWeek);
+        if (isDefaultOff) {
+          defaultOffs.push(dateStr);
+        } else {
+          nonDefaultOffs.push(dateStr);
+        }
+      });
+      
+      // 隨機打亂
+      nonDefaultOffs.sort(() => Math.random() - 0.5);
+      defaultOffs.sort(() => Math.random() - 0.5);
+      
+      // 優先扣除非預設休假日的 OFF，再扣除預設休假日的 OFF
+      const allOffCandidates = [...nonDefaultOffs, ...defaultOffs];
+      const chosenToWork = allOffCandidates.slice(0, Math.min(excess, allOffCandidates.length));
+      
+      chosenToWork.forEach(dateStr => {
+        empRoster[dateStr] = null; // 設回待填工作日
+      });
+    }
+    
+    // 3. 將剩餘的所有待排工作日填入該專員的「預設固定班別」
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(year, month, d);
+      if (empRoster[dateStr] === null) {
+        empRoster[dateStr] = defShift;
+      }
+      // 回寫總班表
+      newRoster[dateStr][emp.id] = empRoster[dateStr];
     }
   });
 
-  // 3.8. 隨機排入多餘的休假天數 (若總休假天數多於設定目標且並非預設休假日/特休)
-  reduceExcessOffDays(newRoster, daysCount);
-
-  // 4. 自動平衡修正 pass (確保每人的月休天數儘量達到指定目標，如8天)
-  adjustRosterForExactDaysOff(newRoster, daysCount);
-
-  // 5. 將運算結果套用至系統狀態並存檔 (標記為未儲存變更，等候手動點擊儲存)
+  // 4. 將結果套用至系統狀態並標記未儲存
   state.roster = newRoster;
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
@@ -1831,7 +1620,8 @@ function renderAll() {
       name: name,
       isIndependent: isIndependent,
       pto: [],
-      defaultOffDays: defaultOffDays
+      defaultOffDays: defaultOffDays,
+      defaultWorkShift: isIndependent ? 'D' : 'A'
     };
   
     state.staff.push(newEmp);
@@ -1927,6 +1717,7 @@ function openEmployeeConfigModal(empId) {
   document.getElementById('input-emp-acw').value = emp.techAcw !== undefined ? emp.techAcw : 120;
   document.getElementById('input-emp-aht').value = emp.techAht !== undefined ? emp.techAht : 300;
   document.getElementById('input-emp-support').value = emp.tempSupport !== undefined ? emp.tempSupport : 0;
+  document.getElementById('input-emp-default-shift').value = emp.defaultWorkShift || (emp.isIndependent ? 'D' : 'A');
   document.getElementById('input-emp-independent').checked = !!emp.isIndependent;
 
   // 顯示 Modal Overlay
@@ -2081,14 +1872,16 @@ function saveEmployeeConfig() {
   state.staff[empIndex].techAcw = parseInt(document.getElementById('input-emp-acw').value) || 120;
   state.staff[empIndex].techAht = parseInt(document.getElementById('input-emp-aht').value) || 300;
   state.staff[empIndex].tempSupport = parseFloat(document.getElementById('input-emp-support').value) || 0;
+  state.staff[empIndex].defaultWorkShift = document.getElementById('input-emp-default-shift').value || 'A';
   
   const wasIndependent = !!state.staff[empIndex].isIndependent;
   const isIndependent = document.getElementById('input-emp-independent').checked;
   state.staff[empIndex].isIndependent = isIndependent;
 
-  // 獨立排班身份切換時，自動修正預設休假星期
+  // 獨立排班身份切換時，自動修正預設休假星期與固定班別
   if (isIndependent !== wasIndependent) {
     state.staff[empIndex].defaultOffDays = isIndependent ? [1, 2] : [0, 6];
+    state.staff[empIndex].defaultWorkShift = isIndependent ? 'D' : 'A';
   }
 
   // 如果排程中有 PTO 的日子排了其他班，自動修正為休假
