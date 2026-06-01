@@ -213,6 +213,7 @@ function initDatabase() {
   }
   
   applyTheme(state.theme);
+  rebuildSortedStaffIds();
 }
 
 function loadDefaults() {
@@ -229,6 +230,7 @@ function loadDefaults() {
   state.hasUnsavedChanges = false;
   state.archives = [];
   saveToLocalStorage();
+  rebuildSortedStaffIds();
 }
 
 function saveToLocalStorage() {
@@ -324,6 +326,36 @@ function getPreviousMonthBoundaryStats(empId, year, month) {
   }
   
   return { lastShiftId, consecutiveWork };
+}
+
+// 4.5. 穩定排班列排序管理器 (Stable Row Sorting Manager)
+function rebuildSortedStaffIds() {
+  const daysCount = getDaysInMonth(state.currentYear, state.currentMonth);
+  const staffList = state.staff;
+  
+  const sorted = [...staffList].sort((emp1, emp2) => {
+    const getShiftWeight = (emp) => {
+      const counts = { A: 0, B: 0, C: 0, D: 0 };
+      for (let d = 1; d <= daysCount; d++) {
+        const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+        const sId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+        if (counts[sId] !== undefined) counts[sId]++;
+      }
+      // 早班(A)權重10000，中班(B)100，晚班(C)1，獨立班(D)0.01
+      return counts.A * 10000 + counts.B * 100 + counts.C * 1 + counts.D * 0.01;
+    };
+    
+    // 獨立排班人員排最後
+    const score1 = emp1.isIndependent ? -100000 : getShiftWeight(emp1);
+    const score2 = emp2.isIndependent ? -100000 : getShiftWeight(emp2);
+    
+    if (score1 !== score2) {
+      return score2 - score1;
+    }
+    return emp1.name.localeCompare(emp2.name);
+  });
+  
+  state.sortedStaffIds = sorted.map(emp => emp.id);
 }
 
 // 5. 勞基法與排班規則即時稽核器 (Labor Law Auditor)
@@ -756,6 +788,7 @@ function runAutoScheduler() {
   }
 
   // 5. 將結果套用至系統狀態並標記未儲存
+  rebuildSortedStaffIds();
   state.roster = newRoster;
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
@@ -1031,27 +1064,23 @@ function renderRosterGrid() {
     return;
   }
 
-  // 依照 早班(A) > 中班(B) > 晚班(C) > 獨立班(D) 的排班比重與狀態進行排序
-  const sortedStaff = [...staffList].sort((emp1, emp2) => {
-    const getShiftWeight = (emp) => {
-      const counts = { A: 0, B: 0, C: 0, D: 0 };
-      for (let d = 1; d <= daysCount; d++) {
-        const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-        const sId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-        if (counts[sId] !== undefined) counts[sId]++;
-      }
-      // 早班(A)權重10000，中班(B)100，晚班(C)1，獨立班(D)0.01
-      return counts.A * 10000 + counts.B * 100 + counts.C * 1 + counts.D * 0.01;
-    };
-    
-    // 獨立排班人員排最後
-    const score1 = emp1.isIndependent ? -100000 : getShiftWeight(emp1);
-    const score2 = emp2.isIndependent ? -100000 : getShiftWeight(emp2);
-    
-    if (score1 !== score2) {
-      return score2 - score1;
+  // 優先使用全域固定的排序，如果 sortedStaffIds 還未初始化或有缺失，自動重建之
+  if (!state.sortedStaffIds || state.sortedStaffIds.length !== staffList.length) {
+    rebuildSortedStaffIds();
+  }
+  
+  // 根據 state.sortedStaffIds 將 staffList 對齊並渲染
+  const sortedStaff = [];
+  state.sortedStaffIds.forEach(id => {
+    const emp = staffList.find(e => e.id === id);
+    if (emp) sortedStaff.push(emp);
+  });
+  
+  // 如果有名單中存在但不在 sortedStaffIds 中的人（例如剛新增），將其附加在尾端
+  staffList.forEach(emp => {
+    if (!state.sortedStaffIds.includes(emp.id)) {
+      sortedStaff.push(emp);
     }
-    return emp1.name.localeCompare(emp2.name);
   });
 
   // --- 1. 產生表頭 (Header Row 1 & 2) ---
@@ -1827,6 +1856,7 @@ function renderAll() {
   
     state.staff.push(newEmp);
     state.hasUnsavedChanges = true;
+    rebuildSortedStaffIds();
     renderAll();
   }
 
@@ -1842,6 +1872,7 @@ function deleteStaff(empId) {
   });
 
   state.hasUnsavedChanges = true;
+  rebuildSortedStaffIds();
   renderAll();
 }
 
@@ -2093,6 +2124,7 @@ function saveEmployeeConfig() {
   });
 
   state.hasUnsavedChanges = true;
+  rebuildSortedStaffIds();
   closeEmployeeConfigModal();
   renderAll();
 }
@@ -2302,6 +2334,7 @@ function saveRosterChanges() {
   } else {
     alert('班表與客服人員名單已儲存至本機快取！設定「雲端同步」網址可自動備份至雲端。');
   }
+  rebuildSortedStaffIds();
 }
 
 // 取消所有變更
@@ -2310,6 +2343,7 @@ function cancelRosterChanges() {
     state.roster = JSON.parse(JSON.stringify(state.backupRoster || {}));
     state.staff = JSON.parse(JSON.stringify(state.backupStaff || []));
     state.hasUnsavedChanges = false;
+    rebuildSortedStaffIds();
     renderAll();
     updateUnsavedChangesUI();
   }
@@ -2831,18 +2865,21 @@ document.addEventListener('DOMContentLoaded', () => {
   yearSelect.addEventListener('change', function() {
     state.currentYear = parseInt(this.value);
     saveToLocalStorage();
+    rebuildSortedStaffIds();
     renderAll();
   });
 
   monthSelect.addEventListener('change', function() {
     state.currentMonth = parseInt(this.value);
     saveToLocalStorage();
+    rebuildSortedStaffIds();
     renderAll();
   });
 
   daysOffInput.addEventListener('change', function() {
     state.daysOff = Math.max(4, Math.min(15, parseInt(this.value) || 8));
     saveToLocalStorage();
+    rebuildSortedStaffIds();
     renderAll();
   });
 
