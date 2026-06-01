@@ -105,9 +105,8 @@ const DEFAULT_STAFF = [
   {
     id: 'staff_9',
     name: 'Sherry Lin',
-    isIndependent: true,
     pto: [],
-    defaultOffDays: [3, 4],
+    defaultOffDays: [0, 6],
     qaScore: 91.0,
     techAcw: 112,
     techAht: 285,
@@ -157,7 +156,17 @@ function initDatabase() {
       state.roster = parsed.roster || {};
       state.theme = parsed.theme || 'dark';
       state.googleWebAppUrl = parsed.googleWebAppUrl || 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec';
+      
+      // 自動升級檢測：確保 Sherry Lin 的獨立排班標籤被移除，且 defaultOffDays 設為 [0, 6]
+      state.staff.forEach(emp => {
+        if (emp.name === 'Sherry Lin' && emp.isIndependent) {
+          emp.isIndependent = false;
+          emp.defaultOffDays = [0, 6];
+        }
+      });
+
       state.backupRoster = JSON.parse(JSON.stringify(state.roster));
+      state.backupStaff = JSON.parse(JSON.stringify(state.staff));
       state.hasUnsavedChanges = false;
       state.archives = parsed.archives || [];
 
@@ -188,6 +197,7 @@ function loadDefaults() {
   state.roster = {}; // 預設空班表
   state.googleWebAppUrl = 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec';
   state.backupRoster = {};
+  state.backupStaff = JSON.parse(JSON.stringify(state.staff));
   state.hasUnsavedChanges = false;
   state.archives = [];
   saveToLocalStorage();
@@ -1744,7 +1754,7 @@ function renderAll() {
     };
   
     state.staff.push(newEmp);
-    saveToLocalStorage();
+    state.hasUnsavedChanges = true;
     renderAll();
   }
 
@@ -1759,7 +1769,7 @@ function deleteStaff(empId) {
     }
   });
 
-  saveToLocalStorage();
+  state.hasUnsavedChanges = true;
   renderAll();
 }
 
@@ -2007,7 +2017,7 @@ function saveEmployeeConfig() {
     }
   });
 
-  saveToLocalStorage();
+  state.hasUnsavedChanges = true;
   closeEmployeeConfigModal();
   renderAll();
 }
@@ -2204,9 +2214,10 @@ function updateUnsavedChangesUI() {
   }
 }
 
-// 儲存班表變更
+// 儲存所有變更 (包含班表與客服名單)
 function saveRosterChanges() {
   state.backupRoster = JSON.parse(JSON.stringify(state.roster));
+  state.backupStaff = JSON.parse(JSON.stringify(state.staff));
   state.hasUnsavedChanges = false;
   saveToLocalStorage();
   updateUnsavedChangesUI();
@@ -2214,14 +2225,15 @@ function saveRosterChanges() {
   if (state.googleWebAppUrl) {
     syncRosterToCloud(true); // 靜默上傳
   } else {
-    alert('班表已儲存至本機快取！設定「雲端同步」網址可自動備份至雲端。');
+    alert('班表與客服人員名單已儲存至本機快取！設定「雲端同步」網址可自動備份至雲端。');
   }
 }
 
-// 取消班表變更
+// 取消所有變更
 function cancelRosterChanges() {
-  if (confirm('確定要取消所有未儲存的變更嗎？此動作將還原為上一次儲存的班表狀態。')) {
+  if (confirm('確定要取消所有未儲存的變更嗎？此動作將還原為上一次儲存的班表與人員設定狀態。')) {
     state.roster = JSON.parse(JSON.stringify(state.backupRoster || {}));
+    state.staff = JSON.parse(JSON.stringify(state.backupStaff || []));
     state.hasUnsavedChanges = false;
     renderAll();
     updateUnsavedChangesUI();
