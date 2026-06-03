@@ -26,10 +26,6 @@ const DEFAULT_STAFF = [
     name: 'Alex Chen',
     pto: ['2026-05-01', '2026-05-15'],
     defaultOffDays: [0, 6],
-    qaScore: 92.5,
-    techAcw: 110,
-    techAht: 280,
-    tempSupport: 4.0,
     defaultWorkShift: 'A'
   },
   {
@@ -37,10 +33,6 @@ const DEFAULT_STAFF = [
     name: 'Howard Chen',
     pto: ['2026-05-10'],
     defaultOffDays: [0, 6],
-    qaScore: 88.0,
-    techAcw: 125,
-    techAht: 310,
-    tempSupport: 0.0,
     defaultWorkShift: 'B'
   },
   {
@@ -48,10 +40,6 @@ const DEFAULT_STAFF = [
     name: 'Amber Wang',
     pto: ['2026-05-02', '2026-05-03'],
     defaultOffDays: [0, 6],
-    qaScore: 95.0,
-    techAcw: 95,
-    techAht: 250,
-    tempSupport: 2.0,
     defaultWorkShift: 'A'
   },
   {
@@ -59,10 +47,6 @@ const DEFAULT_STAFF = [
     name: 'Jacky Lee',
     pto: [],
     defaultOffDays: [0, 6],
-    qaScore: 81.0,
-    techAcw: 145,
-    techAht: 330,
-    tempSupport: 9.0,
     defaultWorkShift: 'C'
   },
   {
@@ -70,10 +54,6 @@ const DEFAULT_STAFF = [
     name: 'Evan Liu',
     pto: ['2026-05-20'],
     defaultOffDays: [0, 6],
-    qaScore: 87.5,
-    techAcw: 115,
-    techAht: 295,
-    tempSupport: 0.0,
     defaultWorkShift: 'B'
   },
   {
@@ -81,10 +61,6 @@ const DEFAULT_STAFF = [
     name: 'Jian Kai Ding',
     pto: ['2026-05-28'],
     defaultOffDays: [0, 6],
-    qaScore: 90.0,
-    techAcw: 120,
-    techAht: 300,
-    tempSupport: 1.0,
     defaultWorkShift: 'A'
   },
   {
@@ -92,22 +68,13 @@ const DEFAULT_STAFF = [
     name: 'Rex Liao',
     pto: [],
     defaultOffDays: [0, 6],
-    qaScore: 84.5,
-    techAcw: 130,
-    techAht: 320,
-    tempSupport: 0.0,
     defaultWorkShift: 'C'
   },
   {
     id: 'staff_8',
     name: 'Molly Song',
-    isIndependent: true,
     pto: [],
     defaultOffDays: [1, 2],
-    qaScore: 89.0,
-    techAcw: 118,
-    techAht: 290,
-    tempSupport: 0.0,
     defaultWorkShift: 'D'
   },
   {
@@ -115,10 +82,6 @@ const DEFAULT_STAFF = [
     name: 'Sherry Lin',
     pto: [],
     defaultOffDays: [0, 6],
-    qaScore: 91.0,
-    techAcw: 112,
-    techAht: 285,
-    tempSupport: 0.0,
     defaultWorkShift: 'A'
   }
 ];
@@ -149,32 +112,29 @@ function initDatabase() {
       state.daysOff = parsed.daysOff || 8;
       state.staff = parsed.staff || [];
 
-      // 自動升級檢測：若舊快取名單中沒有 defaultOffDays 欄位，自動升級為預設星期六、日休假，獨立排班人員則為一二 / 三四
+      // 自動升級檢測：若舊快取名單中沒有 defaultOffDays 欄位，自動升級為預設星期六、日休假
       state.staff.forEach(emp => {
         if (!emp.defaultOffDays) {
-          if (emp.isIndependent) {
-            emp.defaultOffDays = (emp.name === 'Molly Song') ? [1, 2] : [3, 4];
-          } else {
-            emp.defaultOffDays = [0, 6];
-          }
+          emp.defaultOffDays = [0, 6];
         }
+        delete emp.isIndependent;
+        delete emp.qaScore;
+        delete emp.techAcw;
+        delete emp.techAht;
+        delete emp.tempSupport;
       });
 
       // 自動升級檢測：若舊快取名單中沒有 defaultWorkShift 欄位，自動升級為預設班別
       state.staff.forEach(emp => {
         if (!emp.defaultWorkShift) {
-          if (emp.isIndependent) {
-            emp.defaultWorkShift = 'D';
+          if (emp.name === 'Alex Chen' || emp.name === 'Amber Wang' || emp.name === 'Jian Kai Ding' || emp.name === 'Sherry Lin') {
+            emp.defaultWorkShift = 'A';
+          } else if (emp.name === 'Howard Chen' || emp.name === 'Evan Liu') {
+            emp.defaultWorkShift = 'B';
+          } else if (emp.name === 'Jacky Lee' || emp.name === 'Rex Liao') {
+            emp.defaultWorkShift = 'C';
           } else {
-            if (emp.name === 'Alex Chen' || emp.name === 'Amber Wang' || emp.name === 'Jian Kai Ding' || emp.name === 'Sherry Lin') {
-              emp.defaultWorkShift = 'A';
-            } else if (emp.name === 'Howard Chen' || emp.name === 'Evan Liu') {
-              emp.defaultWorkShift = 'B';
-            } else if (emp.name === 'Jacky Lee' || emp.name === 'Rex Liao') {
-              emp.defaultWorkShift = 'C';
-            } else {
-              emp.defaultWorkShift = 'A';
-            }
+            emp.defaultWorkShift = 'A';
           }
         }
       });
@@ -184,14 +144,6 @@ function initDatabase() {
       state.roster = parsed.roster || {};
       state.theme = parsed.theme || 'dark';
       state.googleWebAppUrl = parsed.googleWebAppUrl || 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec';
-      
-      // 自動升級檢測：確保 Sherry Lin 的獨立排班標籤被移除，且 defaultOffDays 設為 [0, 6]
-      state.staff.forEach(emp => {
-        if (emp.name === 'Sherry Lin' && emp.isIndependent) {
-          emp.isIndependent = false;
-          emp.defaultOffDays = [0, 6];
-        }
-      });
 
       state.backupRoster = JSON.parse(JSON.stringify(state.roster));
       state.backupStaff = JSON.parse(JSON.stringify(state.staff));
@@ -345,9 +297,8 @@ function rebuildSortedStaffIds() {
       return counts.A * 10000 + counts.B * 100 + counts.C * 1 + counts.D * 0.01;
     };
     
-    // 獨立排班人員排最後
-    const score1 = emp1.isIndependent ? -100000 : getShiftWeight(emp1);
-    const score2 = emp2.isIndependent ? -100000 : getShiftWeight(emp2);
+    const score1 = getShiftWeight(emp1);
+    const score2 = getShiftWeight(emp2);
     
     if (score1 !== score2) {
       return score2 - score1;
@@ -468,7 +419,6 @@ function auditRoster(year, month) {
     state.shifts.forEach(s => counts[s.id] = 0);
 
     state.staff.forEach(employee => {
-      if (employee.isIndependent) return; // 獨立排班人員不計入常規覆蓋率需求
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][employee.id]) || 'OFF';
       if (counts[shiftId] !== undefined) {
         counts[shiftId]++;
@@ -532,8 +482,8 @@ function runAutoScheduler() {
   }
 
   staffList.forEach(emp => {
-    // 優先使用該專員設定的預設固定班別。若無設定，則依獨立排班狀態預設：獨立為 D，常規為 A
-    const defShift = emp.defaultWorkShift || (emp.isIndependent ? 'D' : 'A');
+    // 優先使用該專員設定的預設固定班別。若無設定，則預設為早班 A
+    const defShift = emp.defaultWorkShift || 'A';
     const ptoSet = new Set(emp.pto || []);
     
     // 1. 初始化該專員在當月的初始狀態
@@ -726,8 +676,6 @@ function runAutoScheduler() {
         let lowestSupportDays = Infinity;
         
         staffList.forEach(emp => {
-          if (emp.isIndependent) return; // 排除獨立排班人員
-
           const currentShift = newRoster[dateStr][emp.id];
           // 如果他今天沒上班 (OFF, PTO) 或是已經在排這個缺口班別，就不能支援
           if (currentShift === 'OFF' || currentShift === 'PTO' || currentShift === shortage.shiftId) return;
@@ -803,8 +751,6 @@ function reduceExcessOffDays(newRoster, daysCount) {
   if (regularShiftIds.length === 0) return;
 
   staffList.forEach(emp => {
-    if (emp.isIndependent) return; // 排除獨立排班人員
-
     // 1. 計算該員工當前總休假天數 (OFF + PTO)
     let totalOffDays = 0;
     const offDates = []; // 儲存所有排定為 'OFF' 的日期
@@ -933,9 +879,9 @@ function adjustRosterForExactDaysOff(newRoster, daysCount) {
       }
     });
 
-    // 找出休假不足與休假過多的人 (排除獨立排班人員)
-    const underOff = staffList.filter(emp => !emp.isIndependent && offCounts[emp.id] < state.daysOff);
-    const overOff = staffList.filter(emp => !emp.isIndependent && offCounts[emp.id] > state.daysOff);
+    // 找出休假不足與休假過多的人
+    const underOff = staffList.filter(emp => offCounts[emp.id] < state.daysOff);
+    const overOff = staffList.filter(emp => offCounts[emp.id] > state.daysOff);
 
     if (underOff.length === 0 || overOff.length === 0) break; // 已全部符合或無法再平衡
 
@@ -1121,18 +1067,13 @@ function renderRosterGrid() {
     const tdName = document.createElement('td');
     tdName.className = 'col-staff-name';
     
-    const badgeHtml = employee.isIndependent 
-      ? `<span class="badge badge-independent" style="font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); margin-top: 4px; display: inline-block; width: max-content; font-weight: 500;">獨立排班</span>` 
-      : '';
-
     // 加個漂亮的小頭像與編輯喜好按鈕
     tdName.innerHTML = `
       <div class="staff-card-info" style="justify-content: space-between; width: 100%; align-items: center;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <div class="staff-avatar" style="${employee.isIndependent ? 'background: linear-gradient(135deg, #2563eb, #60a5fa);' : ''}">${employee.name.charAt(0)}</div>
+          <div class="staff-avatar">${employee.name.charAt(0)}</div>
           <div style="display: flex; flex-direction: column;">
             <span class="staff-name">${employee.name}</span>
-            ${badgeHtml}
           </div>
         </div>
         <button class="btn-icon btn-xs btn-edit-pref" data-id="${employee.id}" title="偏好與特休" style="width:24px; height:24px; border-radius:4px;">
@@ -1159,7 +1100,7 @@ function renderRosterGrid() {
       const hasConflict = currentWarnings.some(w => w.employeeId === employee.id && w.date === dateStr && w.severity === 'error');
       
       // 檢查是否為調班支援班次 (非預設工作班別，且非休假特休)
-      const defShift = employee.defaultWorkShift || (employee.isIndependent ? 'D' : 'A');
+      const defShift = employee.defaultWorkShift || 'A';
       const isSupportShift = (assignedShiftId !== 'OFF' && assignedShiftId !== 'PTO' && assignedShiftId !== defShift);
 
       // 繪製格子的 Shift Badge
@@ -1252,10 +1193,9 @@ function renderRosterGrid() {
       minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
     });
 
-    // 計算當日已排班人數 (非 OFF 且非 PTO，且不包含獨立排班人員)
+    // 計算當日已排班人數 (非 OFF 且非 PTO)
     let activeWorking = 0;
     staffList.forEach(emp => {
-      if (emp.isIndependent) return; // 獨立排班人員不計入常規人力規畫
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
       if (shiftId !== 'OFF' && shiftId !== 'PTO') {
         activeWorking++;
@@ -1344,16 +1284,12 @@ function renderStaffList() {
   state.staff.forEach(emp => {
     const card = document.createElement('div');
     card.className = 'staff-card';
-    const badgeHtml = emp.isIndependent 
-      ? `<span class="badge badge-independent" style="font-size: 0.65rem; padding: 1px 4px; border-radius: 3px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); margin-top: 2px; display: inline-block; width: max-content; font-weight: 500;">獨立排班</span>` 
-      : '';
     card.innerHTML = `
       <div class="staff-card-info">
-        <div class="staff-avatar" style="${emp.isIndependent ? 'background: linear-gradient(135deg, #2563eb, #60a5fa);' : ''}">${emp.name.charAt(0)}</div>
+        <div class="staff-avatar">${emp.name.charAt(0)}</div>
         <div class="staff-details">
           <span class="staff-name">${emp.name}</span>
-          ${badgeHtml}
-          <span class="staff-desc" style="${emp.isIndependent ? 'margin-top: 2px;' : ''}">已排特休: ${emp.pto.length} 天</span>
+          <span class="staff-desc">已排特休: ${emp.pto.length} 天</span>
         </div>
       </div>
       <div class="staff-actions">
@@ -1482,90 +1418,6 @@ function renderFairnessDashboard() {
     return;
   }
 
-  // 1. 計算每月最佳表現獎勵看板 (Monthly Performance Champions)
-  let winnerA = null;
-  let winnerB = null;
-
-  staffList.forEach(emp => {
-    // Month Champion A: Highest QA, tie-breaker: shortest Tech-AHT
-    if (!winnerA) {
-      winnerA = emp;
-    } else {
-      const empQA = emp.qaScore !== undefined ? emp.qaScore : 0;
-      const winQA = winnerA.qaScore !== undefined ? winnerA.qaScore : 0;
-      if (empQA > winQA) {
-        winnerA = emp;
-      } else if (empQA === winQA) {
-        const empAHT = emp.techAht !== undefined ? emp.techAht : Infinity;
-        const winAHT = winnerA.techAht !== undefined ? winnerA.techAht : Infinity;
-        if (empAHT < winAHT) {
-          winnerA = emp;
-        }
-      }
-    }
-
-    // Month Champion B: Highest Temp Support, tie-breaker: shortest Tech-AHT
-    if (!winnerB) {
-      winnerB = emp;
-    } else {
-      const empSupport = emp.tempSupport !== undefined ? emp.tempSupport : 0;
-      const winSupport = winnerB.tempSupport !== undefined ? winnerB.tempSupport : 0;
-      if (empSupport > winSupport) {
-        winnerB = emp;
-      } else if (empSupport === winSupport) {
-        const empAHT = emp.techAht !== undefined ? emp.techAht : Infinity;
-        const winAHT = winnerB.techAht !== undefined ? winnerB.techAht : Infinity;
-        if (empAHT < winAHT) {
-          winnerB = emp;
-        }
-      }
-    }
-  });
-
-  if (winnerA && winnerB) {
-    const champContainer = document.createElement('div');
-    champContainer.className = 'champion-cards-container';
-    champContainer.style.cssText = 'display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px;';
-    champContainer.innerHTML = `
-      <!-- Winner A -->
-      <div class="champion-card champion-a" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.03)); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 12px 14px; position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.05); transition: all 0.3s ease;">
-        <div style="position: absolute; right: -8px; top: -8px; font-size: 3.5rem; opacity: 0.1; color: #fbbf24; transform: rotate(15deg); font-family: Outfit; user-select: none;">🏆</div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="font-size: 1.6rem; background: rgba(245, 158, 11, 0.15); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">🥇</div>
-          <div style="flex: 1;">
-            <h4 style="margin: 0; color: #fbbf24; font-family: Outfit; font-size: 0.85rem; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <span>服務品質特優獎</span>
-              <span style="font-size: 0.65rem; background: rgba(245, 158, 11, 0.15); padding: 1px 5px; border-radius: 99px; color: #fbbf24; font-weight: 500;">QA Champion</span>
-            </h4>
-            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-top: 3px;">${winnerA.name}</div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
-              上月 QA: <strong style="color: #fbbf24;">${winnerA.qaScore}%</strong> / AHT: <strong>${winnerA.techAht}秒</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Winner B -->
-      <div class="champion-card champion-b" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(96, 165, 250, 0.03)); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: var(--radius-md); padding: 12px 14px; position: relative; overflow: hidden; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.05); transition: all 0.3s ease;">
-        <div style="position: absolute; right: -8px; top: -8px; font-size: 3.5rem; opacity: 0.1; color: #60a5fa; transform: rotate(15deg); font-family: Outfit; user-select: none;">⚡</div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <div style="font-size: 1.6rem; background: rgba(59, 130, 246, 0.15); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">🥈</div>
-          <div style="flex: 1;">
-            <h4 style="margin: 0; color: #60a5fa; font-family: Outfit; font-size: 0.85rem; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <span>多能支援傑出獎</span>
-              <span style="font-size: 0.65rem; background: rgba(59, 130, 246, 0.15); padding: 1px 5px; border-radius: 99px; color: #60a5fa; font-weight: 500;">Support Champion</span>
-            </h4>
-            <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary); margin-top: 3px;">${winnerB.name}</div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
-              支援時數: <strong style="color: #60a5fa;">${winnerB.tempSupport}小時</strong> / AHT: <strong>${winnerB.techAht}秒</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    container.appendChild(champContainer);
-  }
-
   // 統計每個人排班各項指標
   const stats = staffList.map(emp => {
     const counts = { 
@@ -1603,14 +1455,14 @@ function renderFairnessDashboard() {
     return { emp, counts };
   });
 
-  // 依照 早班(A) > 中班(B) > 晚班(C) > 獨立班(D) 的排班比重對統計資料進行相同排序，維持畫面一致性
+  // 依照 早班(A) > 中班(B) > 晚班(C) 的排班比重對統計資料進行相同排序，維持畫面一致性
   stats.sort((s1, s2) => {
     const getWeight = (st) => {
       return st.counts.A * 10000 + st.counts.B * 100 + st.counts.C * 1 + st.counts.custom * 0.01;
     };
     
-    const score1 = s1.emp.isIndependent ? -100000 : getWeight(s1);
-    const score2 = s2.emp.isIndependent ? -100000 : getWeight(s2);
+    const score1 = getWeight(s1);
+    const score2 = getWeight(s2);
     
     if (score1 !== score2) {
       return score2 - score1;
@@ -1809,7 +1661,6 @@ function renderGlobalStats() {
   });
 
   state.staff.forEach(emp => {
-    if (emp.isIndependent) return; // 獨立排班人員不計入常規人力覆蓋率
     const shiftId = (state.roster[targetDateStr] && state.roster[targetDateStr][emp.id]) || 'OFF';
     if (shiftId !== 'OFF' && shiftId !== 'PTO') {
       scheduledToday++;
@@ -1840,18 +1691,15 @@ function renderAll() {
 // 8. 人員與班別管理底層動作 (Data Actions)
 
 // A. 新增客服人員
-  function addStaff(name, isIndependent = false) {
+  function addStaff(name) {
     const newId = `staff_${Date.now()}`;
-    
-    const defaultOffDays = isIndependent ? [1, 2] : [0, 6];
   
     const newEmp = {
       id: newId,
       name: name,
-      isIndependent: isIndependent,
       pto: [],
-      defaultOffDays: defaultOffDays,
-      defaultWorkShift: isIndependent ? 'D' : 'A'
+      defaultOffDays: [0, 6],
+      defaultWorkShift: 'A'
     };
   
     state.staff.push(newEmp);
@@ -1944,13 +1792,8 @@ function openEmployeeConfigModal(empId) {
   // 2. 渲染休假預設複選框
   renderModalDefaultOffDays();
 
-  // 3. 填入績效指標與是否為獨立排班人員狀態
-  document.getElementById('input-emp-qa').value = emp.qaScore !== undefined ? emp.qaScore : 85;
-  document.getElementById('input-emp-acw').value = emp.techAcw !== undefined ? emp.techAcw : 120;
-  document.getElementById('input-emp-aht').value = emp.techAht !== undefined ? emp.techAht : 300;
-  document.getElementById('input-emp-support').value = emp.tempSupport !== undefined ? emp.tempSupport : 0;
-  document.getElementById('input-emp-default-shift').value = emp.defaultWorkShift || (emp.isIndependent ? 'D' : 'A');
-  document.getElementById('input-emp-independent').checked = !!emp.isIndependent;
+  // 3. 填入預設固定班別設定
+  document.getElementById('input-emp-default-shift').value = emp.defaultWorkShift || 'A';
 
   // 顯示 Modal Overlay
   document.getElementById('modal-employee-config').classList.remove('display-none');
@@ -2100,21 +1943,7 @@ function saveEmployeeConfig() {
   state.staff[empIndex].pto = tempPtoDays;
   state.staff[empIndex].defaultOffDays = tempDefaultOffDays;
   
-  state.staff[empIndex].qaScore = parseFloat(document.getElementById('input-emp-qa').value) || 85;
-  state.staff[empIndex].techAcw = parseInt(document.getElementById('input-emp-acw').value) || 120;
-  state.staff[empIndex].techAht = parseInt(document.getElementById('input-emp-aht').value) || 300;
-  state.staff[empIndex].tempSupport = parseFloat(document.getElementById('input-emp-support').value) || 0;
   state.staff[empIndex].defaultWorkShift = document.getElementById('input-emp-default-shift').value || 'A';
-  
-  const wasIndependent = !!state.staff[empIndex].isIndependent;
-  const isIndependent = document.getElementById('input-emp-independent').checked;
-  state.staff[empIndex].isIndependent = isIndependent;
-
-  // 獨立排班身份切換時，自動修正預設休假星期與固定班別
-  if (isIndependent !== wasIndependent) {
-    state.staff[empIndex].defaultOffDays = isIndependent ? [1, 2] : [0, 6];
-    state.staff[empIndex].defaultWorkShift = isIndependent ? 'D' : 'A';
-  }
 
   // 如果排程中有 PTO 的日子排了其他班，自動修正為休假
   tempPtoDays.forEach(dateStr => {
@@ -2181,10 +2010,9 @@ function exportRosterToCSV() {
       minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
     });
 
-    // 計算當日已排班人數 (非 OFF 且非 PTO，且不包含獨立排班人員)
+    // 計算當日已排班人數 (非 OFF 且非 PTO)
     let activeWorking = 0;
     staffList.forEach(emp => {
-      if (emp.isIndependent) return; // 獨立排班人員不計入常規人力規畫
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
       if (shiftId !== 'OFF' && shiftId !== 'PTO') {
         activeWorking++;
@@ -2551,7 +2379,6 @@ function convertCurrentRosterTo2DArray() {
     // 計算活躍上班常規客服
     let activeWorking = 0;
     staffList.forEach(emp => {
-      if (emp.isIndependent) return;
       const sId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
       if (sId !== 'OFF' && sId !== 'PTO') {
         activeWorking++;
@@ -2940,20 +2767,17 @@ document.addEventListener('DOMContentLoaded', () => {
   staffCancelBtn.addEventListener('click', () => {
     addStaffForm.classList.add('display-none');
     staffNameInput.value = '';
-    document.getElementById('input-staff-independent').checked = false;
   });
 
   staffSubmitBtn.addEventListener('click', () => {
     const name = staffNameInput.value.trim();
-    const isIndependent = document.getElementById('input-staff-independent').checked;
     if (!name) {
       alert('請輸入客服人員姓名！');
       return;
     }
-    addStaff(name, isIndependent);
+    addStaff(name);
     addStaffForm.classList.add('display-none');
     staffNameInput.value = '';
-    document.getElementById('input-staff-independent').checked = false;
   });
 
   // 6. 自訂班別面板操作事件

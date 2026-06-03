@@ -193,10 +193,6 @@
               <label for="input-staff-name">姓名</label>
               <input type="text" id="input-staff-name" class="form-control" placeholder="輸入姓名 (例如: 陳大明)" required>
             </div>
-            <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px; margin-top: 4px;">
-              <input type="checkbox" id="input-staff-independent" style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="input-staff-independent" style="cursor: pointer; margin-bottom: 0; user-select: none;">獨立排班 (固定 12:00 班次，不計入常規人力)</label>
-            </div>
             <div class="form-actions">
               <button id="btn-staff-submit" class="btn btn-primary btn-sm">新增</button>
               <button id="btn-staff-cancel" class="btn btn-secondary btn-sm">取消</button>
@@ -454,45 +450,22 @@
           <div id="default-off-days-warning" style="color: var(--accent-red); font-size: 0.85rem; margin-top: 8px; font-weight: 500; display: none;">⚠️ 建議選擇剛好兩天以達到最佳排班平衡與勞基法合規效果。</div>
         </div>
 
-        <!-- Section 3: Performance & History -->
+        <!-- Section 3: Default Shift -->
         <div class="modal-section" style="border-top: 1px dashed var(--border-color); padding-top: 16px; margin-top: 16px;">
           <h4>
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            績效指標與歷史排班數據
+            一鍵排班固定班別設定
           </h4>
-          <p class="section-desc">此數據用於自動排班演算法的「優先權潛規則」計算以及「最佳表現獎勵」排名。</p>
+          <p class="section-desc">此設定用於自動排班演算法指派該專員的預設固定班別。</p>
           
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
-            <div class="form-group">
-              <label for="input-emp-qa" style="font-size: 0.8rem; margin-bottom: 4px; display: block; color: var(--text-secondary);">上月 QA 分數</label>
-              <input type="number" id="input-emp-qa" class="form-control" min="0" max="100" step="0.1" style="width: 100%;">
-            </div>
-            <div class="form-group">
-              <label for="input-emp-acw" style="font-size: 0.8rem; margin-bottom: 4px; display: block; color: var(--text-secondary);">上月 Tech-ACW 時間 (秒)</label>
-              <input type="number" id="input-emp-acw" class="form-control" min="0" style="width: 100%;">
-            </div>
-            <div class="form-group">
-              <label for="input-emp-aht" style="font-size: 0.8rem; margin-bottom: 4px; display: block; color: var(--text-secondary);">上月 Tech-AHT 時間 (秒)</label>
-              <input type="number" id="input-emp-aht" class="form-control" min="0" style="width: 100%;">
-            </div>
-            <div class="form-group">
-              <label for="input-emp-support" style="font-size: 0.8rem; margin-bottom: 4px; display: block; color: var(--text-secondary);">上月 臨時支援時數 (小時)</label>
-              <input type="number" id="input-emp-support" class="form-control" min="0" style="width: 100%;">
-            </div>
-            <div class="form-group" style="grid-column: span 2;">
-              <label for="input-emp-default-shift" style="font-size: 0.8rem; margin-bottom: 4px; display: block; color: var(--text-secondary);">一鍵排班預設固定班別</label>
-              <select id="input-emp-default-shift" class="form-control" style="width: 100%;">
-                <option value="A">早班 (A)</option>
-                <option value="B">中班 (B)</option>
-                <option value="C">晚班 (C)</option>
-                <option value="D">獨立班 (D)</option>
-              </select>
-            </div>
-          </div>
-          
-          <div class="form-group" style="margin-top: 16px; display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" id="input-emp-independent" style="width: 16px; height: 16px; cursor: pointer;">
-            <label for="input-emp-independent" style="font-weight: 600; cursor: pointer; user-select: none; font-size: 0.85rem; color: var(--text-primary);">設定為獨立排班人員 (只排獨立班，不計入常規人力規畫)</label>
+          <div class="form-group">
+            <label for="input-emp-default-shift" style="font-size: 0.85rem; margin-bottom: 6px; display: block; color: var(--text-secondary);">一鍵排班預設固定班別</label>
+            <select id="input-emp-default-shift" class="form-control" style="width: 100%;">
+              <option value="A">早班 (A)</option>
+              <option value="B">中班 (B)</option>
+              <option value="C">晚班 (C)</option>
+              <option value="D">獨立班 (D)</option>
+            </select>
           </div>
         </div>
 
