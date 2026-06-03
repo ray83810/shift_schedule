@@ -681,6 +681,10 @@ function runAutoScheduler() {
 
           const defShift = emp.defaultWorkShift || 'A';
           
+          // 限制不可跨越兩個班別：早班(A)不支援晚班(C)，晚班(C)不支援早班(A)
+          if (defShift === 'A' && shortage.shiftId === 'C') return;
+          if (defShift === 'C' && shortage.shiftId === 'A') return;
+          
           // 支援限制檢查:
           // 1. 他本月支援過的其他班別種類限制（扣除他自己的預設班別）
           const tempSet = new Set(supportedShifts[emp.id]);
