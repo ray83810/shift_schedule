@@ -27,63 +27,72 @@ const DEFAULT_STAFF = [
     name: 'Alex Chen',
     pto: ['2026-05-01', '2026-05-15'],
     defaultOffDays: [0, 6],
-    defaultWorkShift: 'A'
-  },
-  {
-    id: 'staff_2',
-    name: 'Howard Chen',
-    pto: ['2026-05-10'],
-    defaultOffDays: [0, 6],
-    defaultWorkShift: 'B'
+    defaultWorkShift: 'A',
+    sortIndex: 0
   },
   {
     id: 'staff_3',
     name: 'Amber Wang',
     pto: ['2026-05-02', '2026-05-03'],
     defaultOffDays: [0, 6],
-    defaultWorkShift: 'A'
-  },
-  {
-    id: 'staff_4',
-    name: 'Jacky Lee',
-    pto: [],
-    defaultOffDays: [0, 6],
-    defaultWorkShift: 'C'
-  },
-  {
-    id: 'staff_5',
-    name: 'Evan Liu',
-    pto: ['2026-05-20'],
-    defaultOffDays: [0, 6],
-    defaultWorkShift: 'B'
+    defaultWorkShift: 'A',
+    sortIndex: 1
   },
   {
     id: 'staff_6',
     name: 'Jian Kai Ding',
     pto: ['2026-05-28'],
     defaultOffDays: [0, 6],
-    defaultWorkShift: 'A'
-  },
-  {
-    id: 'staff_7',
-    name: 'Rex Liao',
-    pto: [],
-    defaultOffDays: [0, 6],
-    defaultWorkShift: 'C'
+    defaultWorkShift: 'A',
+    sortIndex: 2
   },
   {
     id: 'staff_8',
     name: 'Sherry Lin',
     pto: [],
     defaultOffDays: [0, 6],
-    defaultWorkShift: 'A'
+    defaultWorkShift: 'A',
+    sortIndex: 3
+  },
+  {
+    id: 'staff_2',
+    name: 'Howard Chen',
+    pto: ['2026-05-10'],
+    defaultOffDays: [0, 6],
+    defaultWorkShift: 'B',
+    sortIndex: 4
+  },
+  {
+    id: 'staff_5',
+    name: 'Evan Liu',
+    pto: ['2026-05-20'],
+    defaultOffDays: [0, 6],
+    defaultWorkShift: 'B',
+    sortIndex: 5
+  },
+  {
+    id: 'staff_4',
+    name: 'Jacky Lee',
+    pto: [],
+    defaultOffDays: [0, 6],
+    defaultWorkShift: 'C',
+    sortIndex: 6
+  },
+  {
+    id: 'staff_7',
+    name: 'Rex Liao',
+    pto: [],
+    defaultOffDays: [0, 6],
+    defaultWorkShift: 'C',
+    sortIndex: 7
   },
   {
     id: 'staff_9',
     name: 'Molly Song',
     pto: [],
     defaultOffDays: [1, 2],
-    defaultWorkShift: 'D'
+    defaultWorkShift: 'D',
+    sortIndex: 8
   }
 ];
 
@@ -114,7 +123,7 @@ function initDatabase() {
       state.staff = parsed.staff || [];
 
       // 自動升級檢測：若舊快取名單中沒有 defaultOffDays 欄位，自動升級為預設星期六、日休假
-      state.staff.forEach(emp => {
+      state.staff.forEach((emp, idx) => {
         if (!emp.defaultOffDays) {
           emp.defaultOffDays = [0, 6];
         }
@@ -123,6 +132,11 @@ function initDatabase() {
         delete emp.techAcw;
         delete emp.techAht;
         delete emp.tempSupport;
+        
+        // 自動升級：若舊快取沒有 sortIndex，依當前陣列順序自動指派
+        if (emp.sortIndex === undefined || emp.sortIndex === null) {
+          emp.sortIndex = idx;
+        }
       });
 
       // 自動升級檢測：若舊快取名單中沒有 defaultWorkShift 欄位，自動升級為預設班別
@@ -283,15 +297,11 @@ function getPreviousMonthBoundaryStats(empId, year, month) {
 
 // 4.5. 穩定排班列排序管理器 (Stable Row Sorting Manager)
 function sortStaffByShift() {
+  // 依 sortIndex 穩定排序，保留使用者的自訂拖曳順序
   state.staff.sort((emp1, emp2) => {
-    const shiftOrder = { 'A': 1, 'B': 2, 'C': 3, 'D': 4 };
-    const p1 = shiftOrder[emp1.defaultWorkShift] || 99;
-    const p2 = shiftOrder[emp2.defaultWorkShift] || 99;
-    
-    if (p1 !== p2) {
-      return p1 - p2;
-    }
-    return emp1.name.localeCompare(emp2.name);
+    const s1 = (emp1.sortIndex !== undefined && emp1.sortIndex !== null) ? emp1.sortIndex : 999;
+    const s2 = (emp2.sortIndex !== undefined && emp2.sortIndex !== null) ? emp2.sortIndex : 999;
+    return s1 - s2;
   });
 }
 
@@ -524,7 +534,18 @@ function runAutoScheduler() {
     }
     
     // 3. 調整休假天數，使其精準等於目標月休天數
-    let currentOffCount = ptoDates.length + offDates.length;
+    // 重新完整統計所有 OFF + PTO 天數（Step 2 可能已插入額外 OFF）
+    const recountOff = () => {
+      let count = 0;
+      for (let d = 1; d <= daysCount; d++) {
+        const dateStr = formatDateISO(year, month, d);
+        if (empRoster[dateStr] === 'OFF' || empRoster[dateStr] === 'PTO') {
+          count++;
+        }
+      }
+      return count;
+    };
+    let currentOffCount = recountOff();
     const targetOff = state.daysOff;
     
     // 重新取得目前所有的待排工作日 (null)
@@ -1345,6 +1366,9 @@ function renderStaffList() {
           const [removed] = state.staff.splice(draggedIdx, 1);
           state.staff.splice(targetIdx, 0, removed);
           
+          // 更新所有人的 sortIndex 以持久化拖曳排序
+          state.staff.forEach((emp, idx) => { emp.sortIndex = idx; });
+          
           state.hasUnsavedChanges = true;
           updateUnsavedChangesUI();
           rebuildSortedStaffIds();
@@ -1755,12 +1779,12 @@ function renderAll() {
       name: name,
       pto: [],
       defaultOffDays: [0, 6],
-      defaultWorkShift: 'A'
+      defaultWorkShift: 'A',
+      sortIndex: state.staff.length // 新增人員排在最後
     };
   
     state.staff.push(newEmp);
     state.hasUnsavedChanges = true;
-    sortStaffByShift();
     rebuildSortedStaffIds();
     renderAll();
   }
@@ -2010,7 +2034,6 @@ function saveEmployeeConfig() {
   });
 
   state.hasUnsavedChanges = true;
-  sortStaffByShift();
   rebuildSortedStaffIds();
   closeEmployeeConfigModal();
   renderAll();
