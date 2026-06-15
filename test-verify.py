@@ -89,7 +89,7 @@ def get_boundary(emp_id, year, month):
     for d in range(pdc, 0, -1):
         ds = format_date_iso(py, pm, d)
         sid = r.get(ds, {}).get(emp_id, 'OFF')
-        if sid not in ('OFF','PTO'): cons += 1
+        if sid not in ('OFF','PTO','LOA'): cons += 1
         else: break
     return last_shift, cons
 
