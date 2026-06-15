@@ -284,7 +284,7 @@ function getPreviousMonthBoundaryStats(empId, year, month) {
     const dateStr = formatDateISO(prevYear, prevMonth, d);
     const shiftId = (state.roster && state.roster[dateStr] && state.roster[dateStr][empId]) || 'OFF';
     
-    const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO');
+    const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA');
     if (isWork) {
       consecutiveWork++;
     } else {
@@ -381,7 +381,7 @@ function auditRoster(year, month) {
       }
 
       // 3. PTO 強制休假確認 (是否有排定特休卻被排上班的情況)
-      if (employee.pto.includes(dateStr) && shiftId !== 'PTO') {
+      if (employee.pto.includes(dateStr) && shiftId !== 'PTO' && shiftId !== 'AM_PTO' && shiftId !== 'PM_PTO') {
         warnings.push({
           type: 'pto_conflict',
           severity: 'error',
@@ -882,7 +882,7 @@ function isEmployeeRosterCompliant(rosterCopy, daysCount, empId) {
     }
     
     // 3. PTO 檢查
-    if (emp.pto.includes(dateStr) && shiftId !== 'PTO') {
+    if (emp.pto.includes(dateStr) && shiftId !== 'PTO' && shiftId !== 'AM_PTO' && shiftId !== 'PM_PTO') {
       return false;
     }
 
@@ -1002,7 +1002,7 @@ function checkLaborComplianceForSwap(rosterCopy, daysCount, empId1, empId2) {
       }
       
       // PTO 檢查
-      if (emp.pto.includes(dateStr) && shiftId !== 'PTO') {
+      if (emp.pto.includes(dateStr) && shiftId !== 'PTO' && shiftId !== 'AM_PTO' && shiftId !== 'PM_PTO') {
         warnings.push({ severity: 'error' });
       }
 
@@ -1047,23 +1047,15 @@ function renderRosterGrid() {
     return;
   }
 
-  // 優先使用全域固定的排序，如果 sortedStaffIds 還未初始化或有缺失，自動重建之
-  if (!state.sortedStaffIds || state.sortedStaffIds.length !== staffList.length) {
-    rebuildSortedStaffIds();
-  }
+  // 依預設班別優先級排序：早班 → 晚班 (A→B→C→D)，同班別內依姓名 A-Z
+  const shiftPriority = {};
+  state.shifts.forEach((s, idx) => { shiftPriority[s.id] = idx; });
   
-  // 根據 state.sortedStaffIds 將 staffList 對齊並渲染
-  const sortedStaff = [];
-  state.sortedStaffIds.forEach(id => {
-    const emp = staffList.find(e => e.id === id);
-    if (emp) sortedStaff.push(emp);
-  });
-  
-  // 如果有名單中存在但不在 sortedStaffIds 中的人（例如剛新增），將其附加在尾端
-  staffList.forEach(emp => {
-    if (!state.sortedStaffIds.includes(emp.id)) {
-      sortedStaff.push(emp);
-    }
+  const sortedStaff = [...staffList].sort((a, b) => {
+    const pa = shiftPriority[a.defaultWorkShift] ?? 999;
+    const pb = shiftPriority[b.defaultWorkShift] ?? 999;
+    if (pa !== pb) return pa - pb;
+    return a.name.localeCompare(b.name);
   });
 
   // --- 1. 產生表頭 (Header Row 1 & 2) ---
@@ -1239,12 +1231,16 @@ function renderRosterGrid() {
       minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
     });
 
-    // 計算當日已排班人數 (非 OFF 且非 PTO)
+    // 計算當日已排班人數 (非 OFF/PTO/LOA)
     let activeWorking = 0;
     staffList.forEach(emp => {
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO') {
-        activeWorking++;
+      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+        if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+          activeWorking += 0.5;
+        } else {
+          activeWorking++;
+        }
       }
     });
 
@@ -1317,7 +1313,7 @@ function renderLegend() {
   });
 }
 
-// D. 渲染側邊欄客服人員名單 (Staff List Panel)
+// D. 渲染側邊欄客服人員名單 (Staff List Panel) — 固定依姓名 A-Z 字母排序
 function renderStaffList() {
   const container = document.getElementById('staff-list');
   container.innerHTML = '';
@@ -1327,66 +1323,27 @@ function renderStaffList() {
     return;
   }
 
-  state.staff.forEach(emp => {
+  // 建立依姓名 A-Z 排序的副本（不影響 state.staff 原始順序）
+  const alphabeticallySorted = [...state.staff].sort((a, b) => a.name.localeCompare(b.name));
+
+  alphabeticallySorted.forEach(emp => {
     const card = document.createElement('div');
     card.className = 'staff-card';
-    card.setAttribute('draggable', 'true');
     card.dataset.id = emp.id;
-    card.style.cursor = 'grab';
 
-    // HTML5 拖曳排序事件監聽
-    card.addEventListener('dragstart', function(e) {
-      dragSrcEl = this;
-      this.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', emp.id);
-    });
-
-    card.addEventListener('dragover', function(e) {
-      e.preventDefault();
-      this.classList.add('drag-over');
-    });
-
-    card.addEventListener('dragleave', function() {
-      this.classList.remove('drag-over');
-    });
-
-    card.addEventListener('dragend', function() {
-      this.classList.remove('dragging');
-      document.querySelectorAll('.staff-card').forEach(c => c.classList.remove('drag-over'));
-    });
-
-    card.addEventListener('drop', function(e) {
-      e.preventDefault();
-      const draggedId = e.dataTransfer.getData('text/plain');
-      const targetId = this.dataset.id;
-      if (draggedId !== targetId) {
-        const draggedIdx = state.staff.findIndex(item => item.id === draggedId);
-        const targetIdx = state.staff.findIndex(item => item.id === targetId);
-        if (draggedIdx !== -1 && targetIdx !== -1) {
-          const [removed] = state.staff.splice(draggedIdx, 1);
-          state.staff.splice(targetIdx, 0, removed);
-          
-          // 更新所有人的 sortIndex 以持久化拖曳排序
-          state.staff.forEach((emp, idx) => { emp.sortIndex = idx; });
-          
-          state.hasUnsavedChanges = true;
-          updateUnsavedChangesUI();
-          rebuildSortedStaffIds();
-          renderAll();
-        }
-      }
-    });
+    // 顯示該員工目前的預設班別標示
+    const shiftLabel = state.shifts.find(s => s.id === emp.defaultWorkShift);
+    const shiftTag = shiftLabel ? `${shiftLabel.name}` : emp.defaultWorkShift || 'A';
 
     card.innerHTML = `
-      <div class="staff-card-info" style="pointer-events: none;">
+      <div class="staff-card-info">
         <div class="staff-avatar">${emp.name.charAt(0)}</div>
         <div class="staff-details">
           <span class="staff-name">${emp.name}</span>
-          <span class="staff-desc">已排特休: ${emp.pto.length} 天</span>
+          <span class="staff-desc">預設: ${shiftTag} ｜ 特休: ${emp.pto.length} 天</span>
         </div>
       </div>
-      <div class="staff-actions" style="pointer-events: auto;">
+      <div class="staff-actions">
         <button class="btn-icon btn-xs btn-staff-pref" data-id="${emp.id}" title="喜好設定">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px; height:14px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
@@ -1515,7 +1472,7 @@ function renderFairnessDashboard() {
   // 統計每個人排班各項指標
   const stats = staffList.map(emp => {
     const counts = { 
-      A: 0, B: 0, C: 0, OFF: 0, PTO: 0, custom: 0, totalWorkHours: 0,
+      A: 0, B: 0, C: 0, OFF: 0, PTO: 0, LOA: 0, AM_PTO: 0, PM_PTO: 0, custom: 0, totalWorkHours: 0,
       xinyiDays: 0, weekdayOffCount: 0, weekendOffCount: 0
     };
     
@@ -1533,8 +1490,18 @@ function renderFairnessDashboard() {
         counts.PTO++;
         if (isWeekend) counts.weekendOffCount++;
         else counts.weekdayOffCount++;
+      } else if (shiftId === 'LOA') {
+        counts.LOA++;
+        if (isWeekend) counts.weekendOffCount++;
+        else counts.weekdayOffCount++;
+      } else if (shiftId === 'AM_PTO') {
+        counts.AM_PTO++;
+        counts.totalWorkHours += 4;
+      } else if (shiftId === 'PM_PTO') {
+        counts.PM_PTO++;
+        counts.totalWorkHours += 4;
       } else {
-        // 累計各班別工時 (預設三班均為 9 小時，扣除休息時間實計 8 小時，此處簡單用 8 小時估算)
+        // 累計各班別工時 (標準實計工時 8 小時)
         counts.totalWorkHours += 8;
 
         if (shiftId === 'A') {
@@ -1549,36 +1516,53 @@ function renderFairnessDashboard() {
     return { emp, counts };
   });
 
-  // 已自動依照與客服人員名單及班表總覽相同的順序，維持畫面一致性
+  // 排序：依預設班別優先級（A→B→C→D），同班別內依姓名 A-Z（與班表總覽一致）
+  const shiftPriority = {};
+  state.shifts.forEach((s, idx) => { shiftPriority[s.id] = idx; });
+  stats.sort((a, b) => {
+    const pa = shiftPriority[a.emp.defaultWorkShift] ?? 999;
+    const pb = shiftPriority[b.emp.defaultWorkShift] ?? 999;
+    if (pa !== pb) return pa - pb;
+    return a.emp.name.localeCompare(b.emp.name);
+  });
 
   // 渲染公平性進度條
   // 滿分理想工時參考：本月上班天數 * 8 小時
   const maxIdealHours = (daysCount - state.daysOff) * 8;
 
   stats.forEach(({ emp, counts }) => {
-    const totalOff = counts.OFF + counts.PTO;
-    
-    // 計算比例以利在進度條畫出不同顏色區間 (早/中/晚/自訂/休)
+    // 計算比例以利在進度條畫出不同顏色區間 (早/中/晚/自訂/休/特/LOA/半特)
     const totalDays = daysCount;
     const pctA = (counts.A / totalDays) * 100;
     const pctB = (counts.B / totalDays) * 100;
     const pctC = (counts.C / totalDays) * 100;
     const pctCustom = (counts.custom / totalDays) * 100;
-    const pctOff = (totalOff / totalDays) * 100;
+    const pctOff = (counts.OFF / totalDays) * 100;
+    const pctPto = (counts.PTO / totalDays) * 100;
+    const pctLoa = (counts.LOA / totalDays) * 100;
+    const pctHalfPto = ((counts.AM_PTO + counts.PM_PTO) / totalDays) * 100;
+
+    let restDesc = `一般休假: ${counts.OFF} 天`;
+    if (counts.PTO > 0) restDesc += ` | 特休: ${counts.PTO} 天`;
+    if (counts.LOA > 0) restDesc += ` | LOA: ${counts.LOA} 天`;
+    if (counts.AM_PTO + counts.PM_PTO > 0) restDesc += ` | 半特: ${counts.AM_PTO + counts.PM_PTO} 天`;
 
     const item = document.createElement('div');
     item.className = 'fairness-staff-item';
     item.innerHTML = `
       <div class="fairness-staff-header">
         <span class="fairness-staff-name">${emp.name}</span>
-        <span class="fairness-staff-hours">實計工時: ${counts.totalWorkHours} hrs (休假 ${totalOff} 天)</span>
+        <span class="fairness-staff-hours">實計工時: ${counts.totalWorkHours} hrs (${restDesc})</span>
       </div>
-      <div class="fairness-progress-bar-container" title="早班 ${counts.A}天, 中班 ${counts.B}天, 晚班 ${counts.C}天, 自訂 ${counts.custom}天, 休假/特休 ${totalOff}天" style="margin-bottom: 4px;">
+      <div class="fairness-progress-bar-container" title="早班 ${counts.A}天, 中班 ${counts.B}天, 晚班 ${counts.C}天, 自訂 ${counts.custom}天, 一般休假 ${counts.OFF}天, 特休 ${counts.PTO}天, LOA ${counts.LOA}天, 半特 ${counts.AM_PTO + counts.PM_PTO}天" style="margin-bottom: 4px;">
         <div class="fairness-bar-segment fairness-bar-early" style="width: ${pctA}%"></div>
         <div class="fairness-bar-segment fairness-bar-middle" style="width: ${pctB}%"></div>
         <div class="fairness-bar-segment fairness-bar-late" style="width: ${pctC}%"></div>
         <div class="fairness-bar-segment fairness-bar-custom" style="width: ${pctCustom}%"></div>
         <div class="fairness-bar-segment fairness-bar-off" style="width: ${pctOff}%"></div>
+        <div class="fairness-bar-segment fairness-bar-pto" style="width: ${pctPto}%"></div>
+        <div class="fairness-bar-segment fairness-bar-loa" style="width: ${pctLoa}%"></div>
+        <div class="fairness-bar-segment fairness-bar-half-pto" style="width: ${pctHalfPto}%"></div>
       </div>
       <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 12px; padding: 0 2px; border-bottom: 1px dashed rgba(255,255,255,0.05); padding-bottom: 6px;">
         <span>🏢 信義辦公: <strong style="color: var(--accent-blue);">${counts.xinyiDays}</strong> 天</span>
@@ -1595,7 +1579,10 @@ function renderFairnessDashboard() {
       <div class="legend-dot-item"><span class="legend-dot fairness-bar-middle"></span> <span>中班</span></div>
       <div class="legend-dot-item"><span class="legend-dot fairness-bar-late"></span> <span>晚班</span></div>
       <div class="legend-dot-item"><span class="legend-dot fairness-bar-custom"></span> <span>自訂</span></div>
-      <div class="legend-dot-item"><span class="legend-dot fairness-bar-off"></span> <span>休/特</span></div>
+      <div class="legend-dot-item"><span class="legend-dot fairness-bar-off"></span> <span>一般休假</span></div>
+      <div class="legend-dot-item"><span class="legend-dot fairness-bar-pto"></span> <span>特休</span></div>
+      <div class="legend-dot-item"><span class="legend-dot fairness-bar-loa"></span> <span>LOA</span></div>
+      <div class="legend-dot-item"><span class="legend-dot fairness-bar-half-pto"></span> <span>半特</span></div>
     </div>
   `;
 }
@@ -1717,8 +1704,12 @@ function renderGlobalStats() {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     state.staff.forEach(emp => {
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO') {
-        totalHours += 8; // 每班標準估計工時 8hr
+      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+        if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+          totalHours += 4;
+        } else {
+          totalHours += 8;
+        }
       }
     });
   }
@@ -1743,8 +1734,12 @@ function renderGlobalStats() {
 
   state.staff.forEach(emp => {
     const shiftId = (state.roster[targetDateStr] && state.roster[targetDateStr][emp.id]) || 'OFF';
-    if (shiftId !== 'OFF' && shiftId !== 'PTO') {
-      scheduledToday++;
+    if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+      if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+        scheduledToday += 0.5;
+      } else {
+        scheduledToday++;
+      }
     }
   });
 
@@ -2092,12 +2087,16 @@ function exportRosterToCSV() {
       minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
     });
 
-    // 計算當日已排班人數 (非 OFF 且非 PTO)
+    // 計算當日已排班人數 (非 OFF/PTO/LOA)
     let activeWorking = 0;
     staffList.forEach(emp => {
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO') {
-        activeWorking++;
+      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+        if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+          activeWorking += 0.5;
+        } else {
+          activeWorking++;
+        }
       }
     });
 
