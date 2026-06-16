@@ -2734,39 +2734,6 @@ document.addEventListener('DOMContentLoaded', () => {
     staffNameInput.value = '';
   });
 
-  // 6. 自訂班別面板操作事件
-  const addShiftBtn = document.getElementById('btn-add-shift');
-  const addShiftForm = document.getElementById('add-shift-form');
-  const shiftCancelBtn = document.getElementById('btn-shift-cancel');
-  const shiftSubmitBtn = document.getElementById('btn-shift-submit');
-  const shiftNameInput = document.getElementById('input-shift-name');
-  const shiftStartInput = document.getElementById('input-shift-start');
-  const shiftEndInput = document.getElementById('input-shift-end');
-
-  addShiftBtn.addEventListener('click', () => {
-    addShiftForm.classList.remove('display-none');
-    shiftNameInput.focus();
-  });
-
-  shiftCancelBtn.addEventListener('click', () => {
-    addShiftForm.classList.add('display-none');
-    shiftNameInput.value = '';
-  });
-
-  shiftSubmitBtn.addEventListener('click', () => {
-    const name = shiftNameInput.value.trim();
-    const start = shiftStartInput.value;
-    const end = shiftEndInput.value;
-
-    if (!name) {
-      alert('請輸入班次簡稱！');
-      return;
-    }
-    
-    addShift(name, start, end);
-    addShiftForm.classList.add('display-none');
-    shiftNameInput.value = '';
-  });
 
   // 7. 一鍵自動排班按鈕事件
   document.getElementById('btn-auto-schedule').addEventListener('click', function() {
