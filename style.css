@@ -1018,13 +1018,21 @@ h1, h2, h3, h4 {
 }
 
 .roster-view-header {
-  padding: 20px 24px;
+  padding: 16px 24px;
   border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.header-main-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
+  width: 100%;
 }
 
 .view-title-group {
@@ -2078,7 +2086,9 @@ h1, h2, h3, h4 {
 
 .roster-view-container.roster-fullscreen .roster-scroll-container {
   padding: 20px !important;
-  height: calc(100vh - 80px) !important; /* header is roughly 80px */
+  flex: 1 !important;
+  height: auto !important;
+  overflow: auto !important;
 }
 
 /* 手動調整儲存格橘色發光外框與高階小斜角 */
