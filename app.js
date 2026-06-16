@@ -1719,11 +1719,14 @@ function renderGlobalStats() {
     const statCoverageText = document.getElementById('stat-coverage-text');
     if (statCoverageText) statCoverageText.textContent = '請先建立人員名單';
     document.getElementById('stat-avg-hours').textContent = '0 hrs';
+    const statHoursDesc = document.getElementById('stat-hours-desc');
+    if (statHoursDesc) statHoursDesc.textContent = '總工時: 0h | 當月特休: 0天';
     return;
   }
 
-  // 2. 人工工時與平均工時計算
+  // 2. 人工工時、平均工時與當月特休天數計算
   let totalHours = 0;
+  let totalPtoDays = 0;
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     state.staff.forEach(emp => {
@@ -1735,11 +1738,23 @@ function renderGlobalStats() {
           totalHours += 8;
         }
       }
+      
+      // 統計當月所有特休天數 (全特休 A 算 1 天，半特休 AM/PM 算 0.5 天)
+      if (shiftId === 'PTO') {
+        totalPtoDays += 1;
+      } else if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+        totalPtoDays += 0.5;
+      }
     });
   }
 
   const avgHours = totalHours / totalEmployees;
   document.getElementById('stat-avg-hours').textContent = `${avgHours.toFixed(1)} hrs`;
+  
+  const statHoursDesc = document.getElementById('stat-hours-desc');
+  if (statHoursDesc) {
+    statHoursDesc.textContent = `總工時: ${totalHours}h | 當月特休: ${totalPtoDays}天`;
+  }
 
   // 3. 今日排班覆蓋率計算
   // 找尋今天(即當月第一天，或目前系統時間的那天。此處簡單採用本月第一天，或 5/22 作為指標)
