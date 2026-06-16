@@ -2841,6 +2841,55 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('import-json-file').addEventListener('change', importRosterFromJSON);
 
+  // 放大/還原視窗檢視
+  const btnMaximize = document.getElementById('btn-maximize-roster');
+  if (btnMaximize) {
+    btnMaximize.addEventListener('click', (e) => {
+      e.preventDefault();
+      const container = document.querySelector('.roster-view-container');
+      const isFullscreen = container.classList.toggle('roster-fullscreen');
+      if (isFullscreen) {
+        btnMaximize.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;">
+            <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/>
+          </svg>
+          <span>還原視窗</span>
+        `;
+        btnMaximize.title = "還原視窗";
+        document.body.style.overflow = 'hidden'; // 避免背景網頁捲動
+      } else {
+        btnMaximize.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+          </svg>
+          <span>放大檢視</span>
+        `;
+        btnMaximize.title = "放大檢視";
+        document.body.style.overflow = '';
+      }
+    });
+  }
+
+  // 監聽 Escape 鍵退出放大檢視
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const container = document.querySelector('.roster-view-container');
+      if (container && container.classList.contains('roster-fullscreen')) {
+        container.classList.remove('roster-fullscreen');
+        if (btnMaximize) {
+          btnMaximize.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px;">
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+            </svg>
+            <span>放大檢視</span>
+          `;
+          btnMaximize.title = "放大檢視";
+        }
+        document.body.style.overflow = '';
+      }
+    }
+  });
+
   // 一鍵列印 PDF
   document.getElementById('export-pdf').addEventListener('click', (e) => {
     e.preventDefault();

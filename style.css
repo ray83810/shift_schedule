@@ -2018,3 +2018,61 @@ h1, h2, h3, h4 {
   border-color: transparent var(--accent-blue) transparent transparent;
   z-index: 6;
 }
+
+/* 放大檢視按鈕樣式 */
+#btn-maximize-roster {
+  margin-left: 12px;
+  border-radius: 6px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#btn-maximize-roster:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+#btn-maximize-roster:active {
+  transform: translateY(0);
+}
+
+/* 滿版/放大檢視樣式 */
+.roster-view-container.roster-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 2000 !important;
+  background: #0B0F19 !important; /* solid app dark background to fully cover underlying content */
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  border: none !important;
+}
+
+.roster-view-container.roster-fullscreen .roster-view-header {
+  padding: 16px 24px !important;
+  background: #111827 !important; /* darker background for header */
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.roster-view-container.roster-fullscreen .roster-scroll-container {
+  padding: 20px !important;
+  height: calc(100vh - 80px) !important; /* header is roughly 80px */
+}
+
