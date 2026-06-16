@@ -97,29 +97,24 @@
       </div>
     </div>
 
-    <div class="metric-card card-glass animate-float-slow" style="animation-delay: 0.2s;">
+    <div class="metric-card card-glass memo-card animate-float-slow" style="animation-delay: 0.2s;">
       <div class="card-glow-border"></div>
-      <div class="metric-icon icon-green" id="compliance-icon-container">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <div class="memo-header">
+        <span class="metric-label">備忘錄 A</span>
+        <button id="btn-save-memo-a" class="memo-save-btn">儲存</button>
       </div>
-      <div class="metric-info">
-        <span class="metric-label">勞基法合規健康度</span>
-        <h3 id="stat-compliance" class="metric-value">100%</h3>
-        <p id="stat-compliance-text" class="metric-desc text-green">無勞基法違規項目</p>
-      </div>
+      <textarea id="memo-a-content" class="memo-textarea" placeholder="在此輸入備忘紀錄 A..."></textarea>
     </div>
 
-    <div class="metric-card card-glass animate-float-slow" style="animation-delay: 0.4s;">
+    <div class="metric-card card-glass memo-card animate-float-slow" style="animation-delay: 0.4s;">
       <div class="card-glow-border"></div>
-      <div class="metric-icon icon-purple">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <div class="memo-header">
+        <span class="metric-label">備忘錄 B</span>
+        <button id="btn-save-memo-b" class="memo-save-btn">儲存</button>
       </div>
-      <div class="metric-info">
-        <span class="metric-label">今日排班覆蓋率</span>
-        <h3 id="stat-coverage" class="metric-value">0%</h3>
-        <p id="stat-coverage-text" class="metric-desc">早/中/晚班配置狀況</p>
-      </div>
+      <textarea id="memo-b-content" class="memo-textarea" placeholder="在此輸入備忘紀錄 B..."></textarea>
     </div>
+
 
     <div class="metric-card card-glass animate-float-slow" style="animation-delay: 0.6s;">
       <div class="card-glow-border"></div>

@@ -1603,14 +1603,20 @@ function renderWarningsReport() {
   if (currentWarnings.length === 0) {
     panel.classList.add('display-none');
     
-    // 更新 Dashboard 上方的 Metric Card
-    document.getElementById('stat-compliance').textContent = '100%';
+    // 更新 Dashboard 上方的 Metric Card (若 DOM 存在才更新，防止替換備忘錄後報錯)
+    const statCompliance = document.getElementById('stat-compliance');
+    if (statCompliance) {
+      statCompliance.textContent = '100%';
+    }
     const complianceText = document.getElementById('stat-compliance-text');
-    complianceText.textContent = '無勞基法違規項目';
-    complianceText.className = 'metric-desc text-green';
-
+    if (complianceText) {
+      complianceText.textContent = '無勞基法違規項目';
+      complianceText.className = 'metric-desc text-green';
+    }
     const container = document.getElementById('compliance-icon-container');
-    container.className = 'metric-icon icon-green';
+    if (container) {
+      container.className = 'metric-icon icon-green';
+    }
     return;
   }
 
@@ -1622,21 +1628,32 @@ function renderWarningsReport() {
   const errors = currentWarnings.filter(w => w.severity === 'error');
   countSpan.textContent = currentWarnings.length;
 
-  // 更新 Dashboard 上方的 Metric Card
+  // 更新 Dashboard 上方的 Metric Card (若 DOM 存在才更新，防止替換備忘錄後報錯)
   const compliancePct = Math.max(0, 100 - (errors.length * 15));
-  document.getElementById('stat-compliance').textContent = `${compliancePct}%`;
+  const statCompliance = document.getElementById('stat-compliance');
+  if (statCompliance) {
+    statCompliance.textContent = `${compliancePct}%`;
+  }
   
   const complianceText = document.getElementById('stat-compliance-text');
   const container = document.getElementById('compliance-icon-container');
   
   if (errors.length > 0) {
-    complianceText.textContent = `偵測到 ${errors.length} 項勞基法合規錯誤！`;
-    complianceText.className = 'metric-desc text-red';
-    container.className = 'metric-icon icon-red animate-float-slow'; // 警告卡片震動/漂浮
+    if (complianceText) {
+      complianceText.textContent = `偵測到 ${errors.length} 項勞基法合規錯誤！`;
+      complianceText.className = 'metric-desc text-red';
+    }
+    if (container) {
+      container.className = 'metric-icon icon-red animate-float-slow'; // 警告卡片震動/漂浮
+    }
   } else {
-    complianceText.textContent = `勞基法合規，有 ${currentWarnings.length} 項覆蓋率警告`;
-    complianceText.className = 'metric-desc text-orange';
-    container.className = 'metric-icon icon-orange';
+    if (complianceText) {
+      complianceText.textContent = `勞基法合規，有 ${currentWarnings.length} 項覆蓋率警告`;
+      complianceText.className = 'metric-desc text-orange';
+    }
+    if (container) {
+      container.className = 'metric-icon icon-orange';
+    }
   }
 
   // 填充底部警告條目
@@ -1697,8 +1714,10 @@ function renderGlobalStats() {
   const totalEmployees = state.staff.length;
   
   if (totalEmployees === 0) {
-    document.getElementById('stat-coverage').textContent = '0%';
-    document.getElementById('stat-coverage-text').textContent = '請先建立人員名單';
+    const statCoverage = document.getElementById('stat-coverage');
+    if (statCoverage) statCoverage.textContent = '0%';
+    const statCoverageText = document.getElementById('stat-coverage-text');
+    if (statCoverageText) statCoverageText.textContent = '請先建立人員名單';
     document.getElementById('stat-avg-hours').textContent = '0 hrs';
     return;
   }
@@ -1749,8 +1768,14 @@ function renderGlobalStats() {
   });
 
   const coveragePct = requiredToday > 0 ? Math.min(100, Math.round((scheduledToday / requiredToday) * 100)) : 100;
-  document.getElementById('stat-coverage').textContent = `${coveragePct}%`;
-  document.getElementById('stat-coverage-text').textContent = `以 ${targetDay}日為例: 需求 ${requiredToday}人, 實到 ${scheduledToday}人`;
+  const statCoverage = document.getElementById('stat-coverage');
+  if (statCoverage) {
+    statCoverage.textContent = `${coveragePct}%`;
+  }
+  const statCoverageText = document.getElementById('stat-coverage-text');
+  if (statCoverageText) {
+    statCoverageText.textContent = `以 ${targetDay}日為例: 需求 ${requiredToday}人, 實到 ${scheduledToday}人`;
+  }
 }
 
 // 統整重繪所有 UI 元件
@@ -2987,6 +3012,61 @@ document.addEventListener('DOMContentLoaded', () => {
     btnCancelRoster.addEventListener('click', cancelRosterChanges);
   }
 
+  // 10.3 備忘錄儲存與初始化
+  initMemos();
+  setupMemoEventListeners();
+
   // 11. 首次繪製
   renderAll();
 });
+
+function initMemos() {
+  const memoA = localStorage.getItem('aura_roster_memo_a') || '';
+  const memoB = localStorage.getItem('aura_roster_memo_b') || '';
+  
+  const textareaA = document.getElementById('memo-a-content');
+  const textareaB = document.getElementById('memo-b-content');
+  
+  if (textareaA) textareaA.value = memoA;
+  if (textareaB) textareaB.value = memoB;
+}
+
+function setupMemoEventListeners() {
+  const btnSaveA = document.getElementById('btn-save-memo-a');
+  const btnSaveB = document.getElementById('btn-save-memo-b');
+  const textareaA = document.getElementById('memo-a-content');
+  const textareaB = document.getElementById('memo-b-content');
+  
+  if (btnSaveA && textareaA) {
+    btnSaveA.addEventListener('click', (e) => {
+      e.preventDefault();
+      localStorage.setItem('aura_roster_memo_a', textareaA.value);
+      showMemoSaveFeedback(btnSaveA);
+    });
+  }
+  
+  if (btnSaveB && textareaB) {
+    btnSaveB.addEventListener('click', (e) => {
+      e.preventDefault();
+      localStorage.setItem('aura_roster_memo_b', textareaB.value);
+      showMemoSaveFeedback(btnSaveB);
+    });
+  }
+}
+
+function showMemoSaveFeedback(btn) {
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '✓ 已儲存';
+  btn.style.background = 'var(--accent-green)';
+  btn.style.borderColor = 'var(--accent-green)';
+  btn.style.boxShadow = '0 0 10px var(--accent-green-glow)';
+  btn.disabled = true;
+  
+  setTimeout(() => {
+    btn.innerHTML = originalText;
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    btn.style.boxShadow = '';
+    btn.disabled = false;
+  }, 1500);
+}
