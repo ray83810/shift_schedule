@@ -15,7 +15,8 @@ const state = {
   theme: 'dark',   // 'dark' or 'light'
   hasUnsavedChanges: false, // 標記當前是否有未儲存的變更
   googleWebAppUrl: 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec',      // Google Sheets Apps Script Web App 網址
-  backupRoster: {}          // 保存上次儲存的班表備份以供「取消變更」復原
+  backupRoster: {},          // 保存上次儲存的班表備份以供「取消變更」復原
+  manualEdits: {}            // 追蹤手動編輯的格子 { 'YYYY-MM-DD_staffId': true }
 };
 
 let dragSrcEl = null;
@@ -166,6 +167,7 @@ function initDatabase() {
 
       state.backupRoster = JSON.parse(JSON.stringify(state.roster));
       state.backupStaff = JSON.parse(JSON.stringify(state.staff));
+      state.manualEdits = {};
       state.hasUnsavedChanges = false;
 
       // 自動升級檢測：如果快取名單長度小於 9 位或是沒有 Molly Song，直接重置並載入最新 9 人名單
@@ -199,6 +201,7 @@ function loadDefaults() {
   state.googleWebAppUrl = 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec';
   state.backupRoster = {};
   state.backupStaff = JSON.parse(JSON.stringify(state.staff));
+  state.manualEdits = {};
   state.hasUnsavedChanges = false;
   saveToLocalStorage();
   rebuildSortedStaffIds();
@@ -1162,9 +1165,12 @@ function renderRosterGrid() {
         }
       }
 
+      // 檢查這個格子是否被手動修改過
+      const isManuallyEdited = state.manualEdits && state.manualEdits[`${dateStr}_${employee.id}`];
+
       // 格子內部 DOM 結構：結合下拉隱形 Selector 以便滑動點擊調整班表
       const cellInner = document.createElement('div');
-      cellInner.className = `roster-cell-inner ${hasConflict ? 'cell-warning-glow' : ''} ${isSupportShift ? 'cell-support-assigned' : ''}`;
+      cellInner.className = `roster-cell-inner ${hasConflict ? 'cell-warning-glow' : ''} ${isSupportShift ? 'cell-support-assigned' : ''} ${isManuallyEdited ? 'cell-manually-edited' : ''}`;
       cellInner.dataset.employeeId = employee.id;
       cellInner.dataset.date = dateStr;
       
@@ -1282,6 +1288,18 @@ function renderRosterGrid() {
       if (!state.roster[date]) {
         state.roster[date] = {};
       }
+
+      // 判斷是否變更 (與上次儲存的 backupRoster 比對)
+      const originalShiftId = (state.backupRoster[date] && state.backupRoster[date][empId]) || 'OFF';
+      if (!state.manualEdits) {
+        state.manualEdits = {};
+      }
+      if (newShiftId !== originalShiftId) {
+        state.manualEdits[`${date}_${empId}`] = true;
+      } else {
+        delete state.manualEdits[`${date}_${empId}`];
+      }
+
       state.roster[date][empId] = newShiftId;
       
       state.hasUnsavedChanges = true;
@@ -2224,6 +2242,7 @@ function saveRosterChanges() {
   state.backupRoster = JSON.parse(JSON.stringify(state.roster));
   state.backupStaff = JSON.parse(JSON.stringify(state.staff));
   state.hasUnsavedChanges = false;
+  state.manualEdits = {}; // 儲存後清空手動編輯標記
   saveToLocalStorage();
   updateUnsavedChangesUI();
   
@@ -2233,6 +2252,7 @@ function saveRosterChanges() {
   
   alert('班表已成功儲存！');
   rebuildSortedStaffIds();
+  renderAll(); // 重繪以清除儲存格的修改亮框
 }
 
 // 取消所有變更
@@ -2241,6 +2261,7 @@ function cancelRosterChanges() {
     state.roster = JSON.parse(JSON.stringify(state.backupRoster || {}));
     state.staff = JSON.parse(JSON.stringify(state.backupStaff || []));
     state.hasUnsavedChanges = false;
+    state.manualEdits = {}; // 取消後清空手動編輯標記
     rebuildSortedStaffIds();
     renderAll();
     updateUnsavedChangesUI();
@@ -2372,6 +2393,7 @@ async function syncRosterFromCloud(isSilent = false) {
       
       state.backupRoster = JSON.parse(JSON.stringify(state.roster));
       state.backupStaff = JSON.parse(JSON.stringify(state.staff));
+      state.manualEdits = {};
       state.hasUnsavedChanges = false;
       
       saveToLocalStorage();
@@ -2657,9 +2679,10 @@ function exportRosterToExcel() {
 
 // A.3 智慧排班與手動調整之復原與重做 (Undo / Redo 邏輯)
 function pushUndoState() {
-  // 複製一份當前的 roster 狀態並推入 undoStack
+  // 複製一份當前的 roster 狀態與手動編輯狀態並推入 undoStack
   const rosterCopy = JSON.parse(JSON.stringify(state.roster));
-  undoStack.push(rosterCopy);
+  const manualEditsCopy = JSON.parse(JSON.stringify(state.manualEdits || {}));
+  undoStack.push({ roster: rosterCopy, manualEdits: manualEditsCopy });
   
   // 限制 stack 大小 (例如最多 50 步)
   if (undoStack.length > 50) {
@@ -2674,11 +2697,19 @@ function pushUndoState() {
 function undoRoster() {
   if (undoStack.length === 0) return;
   // 備份當前狀態到 redoStack
-  const currentCopy = JSON.parse(JSON.stringify(state.roster));
-  redoStack.push(currentCopy);
+  const currentRoster = JSON.parse(JSON.stringify(state.roster));
+  const currentEdits = JSON.parse(JSON.stringify(state.manualEdits || {}));
+  redoStack.push({ roster: currentRoster, manualEdits: currentEdits });
   
   // 載入上一步
-  state.roster = undoStack.pop();
+  const popped = undoStack.pop();
+  if (popped && popped.roster) {
+    state.roster = popped.roster;
+    state.manualEdits = popped.manualEdits || {};
+  } else {
+    state.roster = popped || {};
+    state.manualEdits = {};
+  }
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
   updateUndoRedoButtonsUI();
@@ -2688,11 +2719,19 @@ function undoRoster() {
 function redoRoster() {
   if (redoStack.length === 0) return;
   // 備份當前狀態到 undoStack
-  const currentCopy = JSON.parse(JSON.stringify(state.roster));
-  undoStack.push(currentCopy);
+  const currentRoster = JSON.parse(JSON.stringify(state.roster));
+  const currentEdits = JSON.parse(JSON.stringify(state.manualEdits || {}));
+  undoStack.push({ roster: currentRoster, manualEdits: currentEdits });
   
   // 載入下一步
-  state.roster = redoStack.pop();
+  const popped = redoStack.pop();
+  if (popped && popped.roster) {
+    state.roster = popped.roster;
+    state.manualEdits = popped.manualEdits || {};
+  } else {
+    state.roster = popped || {};
+    state.manualEdits = {};
+  }
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
   updateUndoRedoButtonsUI();
@@ -2816,6 +2855,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 保存當前狀態以利復原
     pushUndoState();
+
+    // 執行自動排班時，重設手動編輯狀態
+    state.manualEdits = {};
 
     const btn = this;
     const originalText = btn.innerHTML;
