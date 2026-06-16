@@ -1720,13 +1720,17 @@ function renderGlobalStats() {
     if (statCoverageText) statCoverageText.textContent = '請先建立人員名單';
     document.getElementById('stat-avg-hours').textContent = '0 hrs';
     const statHoursDesc = document.getElementById('stat-hours-desc');
-    if (statHoursDesc) statHoursDesc.textContent = '總工時: 0h | 當月特休: 0天';
+    if (statHoursDesc) statHoursDesc.textContent = '總工時: 0h';
     return;
   }
 
-  // 2. 人工工時、平均工時與當月特休天數計算
+  // 2. 人工工時、平均工時與當月假別天數計算
   let totalHours = 0;
-  let totalPtoDays = 0;
+  let totalPto = 0;
+  let totalAmPto = 0;
+  let totalPmPto = 0;
+  let totalLoa = 0;
+
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     state.staff.forEach(emp => {
@@ -1739,11 +1743,15 @@ function renderGlobalStats() {
         }
       }
       
-      // 統計當月所有特休天數 (全特休 A 算 1 天，半特休 AM/PM 算 0.5 天)
+      // 累計各假別次數，後續換算為天數
       if (shiftId === 'PTO') {
-        totalPtoDays += 1;
-      } else if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
-        totalPtoDays += 0.5;
+        totalPto += 1;
+      } else if (shiftId === 'AM_PTO') {
+        totalAmPto += 0.5;
+      } else if (shiftId === 'PM_PTO') {
+        totalPmPto += 0.5;
+      } else if (shiftId === 'LOA') {
+        totalLoa += 1;
       }
     });
   }
@@ -1753,7 +1761,13 @@ function renderGlobalStats() {
   
   const statHoursDesc = document.getElementById('stat-hours-desc');
   if (statHoursDesc) {
-    statHoursDesc.textContent = `總工時: ${totalHours}h | 當月特休: ${totalPtoDays}天`;
+    // 依據條件動態組合請假天數描述，若某假別天數為 0 則不顯示
+    let desc = `總工時: ${totalHours}h`;
+    if (totalPto > 0) desc += ` | 特休: ${totalPto}天`;
+    if (totalAmPto > 0) desc += ` | 上特: ${totalAmPto}天`;
+    if (totalPmPto > 0) desc += ` | 下特: ${totalPmPto}天`;
+    if (totalLoa > 0) desc += ` | LOA: ${totalLoa}天`;
+    statHoursDesc.textContent = desc;
   }
 
   // 3. 今日排班覆蓋率計算
