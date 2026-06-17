@@ -16,7 +16,8 @@ const state = {
   hasUnsavedChanges: false, // 標記當前是否有未儲存的變更
   googleWebAppUrl: 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec',      // Google Sheets Apps Script Web App 網址
   backupRoster: {},          // 保存上次儲存的班表備份以供「取消變更」復原
-  manualEdits: {}            // 追蹤手動編輯的格子 { 'YYYY-MM-DD_staffId': true }
+  manualEdits: {},            // 追蹤手動編輯的格子 { 'YYYY-MM-DD_staffId': true }
+  monthlyDaysOff: {}         // 追蹤每個月自訂的休假天數 { 'YYYY-MM': number }
 };
 
 let dragSrcEl = null;
@@ -125,6 +126,7 @@ function initDatabase() {
       state.currentYear = parsed.currentYear || 2026;
       state.currentMonth = parsed.currentMonth !== undefined ? parsed.currentMonth : 4;
       state.daysOff = parsed.daysOff || 8;
+      state.monthlyDaysOff = parsed.monthlyDaysOff || {};
       state.staff = parsed.staff || [];
 
       // 自動升級檢測：若舊快取名單中沒有 defaultOffDays 欄位，自動升級為預設星期六、日休假
@@ -192,7 +194,8 @@ function initDatabase() {
 function loadDefaults() {
   state.currentYear = 2026;
   state.currentMonth = 4; // 五月
-  state.daysOff = 8;
+  state.monthlyDaysOff = {};
+  updateDaysOffFromState();
   state.staff = JSON.parse(JSON.stringify(DEFAULT_STAFF));
   sortStaffByShift();
   state.shifts = JSON.parse(JSON.stringify(DEFAULT_SHIFTS));
@@ -241,6 +244,43 @@ function formatDateISO(year, month, day) {
   const mm = String(month + 1).padStart(2, '0');
   const dd = String(day).padStart(2, '0');
   return `${year}-${mm}-${dd}`;
+}
+
+// 取得特定年月之預設休假天數（2026 年套用指定值，其他年份預設為 8 天）
+function getDefaultDaysOff(year, month) {
+  if (year === 2026) {
+    const defaults = {
+      0: 11, // 1月
+      1: 11, // 2月
+      2: 11, // 3月
+      3: 10, // 4月
+      4: 10, // 5月
+      5: 10, // 6月
+      6: 9,  // 7月
+      7: 9,  // 8月
+      8: 10, // 9月
+      9: 10, // 10月
+      10: 10,// 11月
+      11: 9  // 12月
+    };
+    return defaults[month] !== undefined ? defaults[month] : 8;
+  }
+  return 8;
+}
+
+// 依據目前狀態年月更新休假天數（若有手動設定則套用手動值，否則帶入預設值）
+function updateDaysOffFromState() {
+  const key = `${state.currentYear}-${state.currentMonth}`;
+  if (state.monthlyDaysOff && state.monthlyDaysOff[key] !== undefined) {
+    state.daysOff = state.monthlyDaysOff[key];
+  } else {
+    state.daysOff = getDefaultDaysOff(state.currentYear, state.currentMonth);
+  }
+  
+  const daysOffInput = document.getElementById('global-days-off');
+  if (daysOffInput) {
+    daysOffInput.value = state.daysOff;
+  }
 }
 
 // 計算兩班別之間的休息間隔 (小時)
@@ -2239,7 +2279,8 @@ function importRosterFromJSON(event) {
       if (parsed.staff && parsed.shifts && parsed.coverageTargets) {
         state.currentYear = parsed.currentYear || 2026;
         state.currentMonth = parsed.currentMonth !== undefined ? parsed.currentMonth : 4;
-        state.daysOff = parsed.daysOff || 8;
+        state.monthlyDaysOff = parsed.monthlyDaysOff || {};
+        updateDaysOffFromState();
         state.staff = parsed.staff;
         state.shifts = parsed.shifts;
         state.coverageTargets = parsed.coverageTargets;
@@ -2431,7 +2472,8 @@ async function syncRosterFromCloud(isSilent = false) {
     if (cloudState && cloudState.staff && cloudState.shifts) {
       state.currentYear = cloudState.currentYear || 2026;
       state.currentMonth = cloudState.currentMonth !== undefined ? cloudState.currentMonth : 4;
-      state.daysOff = cloudState.daysOff || 8;
+      state.monthlyDaysOff = cloudState.monthlyDaysOff || {};
+      updateDaysOffFromState();
       state.staff = cloudState.staff;
       state.shifts = cloudState.shifts;
       state.coverageTargets = cloudState.coverageTargets || {};
@@ -2809,6 +2851,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 1. 初始化資料庫與狀態
   initDatabase();
   populateYearMonthSelectors();
+  updateDaysOffFromState();
 
   // 偵測到配置的雲端同步網址，正在自動載入最新雲端班表與歷史封存...
   if (state.googleWebAppUrl) {
@@ -2825,6 +2868,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   yearSelect.addEventListener('change', function() {
     state.currentYear = parseInt(this.value);
+    updateDaysOffFromState();
     undoStack = [];
     redoStack = [];
     updateUndoRedoButtonsUI();
@@ -2835,6 +2879,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   monthSelect.addEventListener('change', function() {
     state.currentMonth = parseInt(this.value);
+    updateDaysOffFromState();
     undoStack = [];
     redoStack = [];
     updateUndoRedoButtonsUI();
@@ -2844,7 +2889,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   daysOffInput.addEventListener('change', function() {
-    state.daysOff = Math.max(4, Math.min(15, parseInt(this.value) || 8));
+    const val = Math.max(4, Math.min(15, parseInt(this.value) || 8));
+    state.daysOff = val;
+    if (!state.monthlyDaysOff) {
+      state.monthlyDaysOff = {};
+    }
+    const key = `${state.currentYear}-${state.currentMonth}`;
+    state.monthlyDaysOff[key] = val;
     saveToLocalStorage();
     rebuildSortedStaffIds();
     renderAll();
