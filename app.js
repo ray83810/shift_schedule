@@ -561,7 +561,7 @@ function auditRoster(year, month) {
           employeeId: employee.id,
           employeeName: employee.name,
           date: dateStr,
-          message: `${employee.name} 於本日已設定為強制OFF，卻被指派了「${shiftMap.get(shiftId)?.name || shiftId}」，請改為強制OFF！`
+          message: `${employee.name} 於本日已設定為強制OFF，卻被指派了「${shiftMap.get(shiftId)?.name || shiftId}」，請改為排休！`
         });
       }
 
@@ -1365,16 +1365,15 @@ function renderRosterGrid() {
       let badgeLabel = assignedShiftId;
       let badgeClass = `shift-${assignedShiftId}`;
       
-      if (assignedShiftId === 'OFF') {
+      if (assignedShiftId === 'OFF' || assignedShiftId === 'FOFF') {
         badgeLabel = '休';
+        badgeClass = 'shift-OFF';
       } else if (assignedShiftId === 'PTO') {
         badgeLabel = '特';
       } else if (assignedShiftId === 'LOA') {
         badgeLabel = 'LOA';
       } else if (assignedShiftId === 'PUB') {
         badgeLabel = '公';
-      } else if (assignedShiftId === 'FOFF') {
-        badgeLabel = '強休';
       } else if (assignedShiftId === 'AM_PTO') {
         badgeLabel = '上特';
       } else if (assignedShiftId === 'PM_PTO') {
@@ -1402,8 +1401,7 @@ function renderRosterGrid() {
       
       // 建立下拉選單內容 (隱形於滑鼠懸停) - 任何人都可以直接手動調整為任何班別 (包括獨立班D)
       let selectOptions = `
-        <option value="OFF" ${assignedShiftId === 'OFF' ? 'selected' : ''}>休假 (OFF)</option>
-        <option value="FOFF" ${assignedShiftId === 'FOFF' ? 'selected' : ''}>強制OFF (強休)</option>
+        <option value="OFF" ${assignedShiftId === 'OFF' || assignedShiftId === 'FOFF' ? 'selected' : ''}>休假 (OFF)</option>
         <option value="PTO" ${assignedShiftId === 'PTO' ? 'selected' : ''}>特休 (PTO)</option>
         <option value="LOA" ${assignedShiftId === 'LOA' ? 'selected' : ''}>體檢 (LOA)</option>
         <option value="PUB" ${assignedShiftId === 'PUB' ? 'selected' : ''}>公假 (公)</option>
@@ -1736,12 +1734,8 @@ function renderFairnessDashboard() {
       const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
       const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
 
-      if (shiftId === 'OFF') {
+      if (shiftId === 'OFF' || shiftId === 'FOFF') {
         counts.OFF++;
-        if (isWeekend) counts.weekendOffCount++;
-        else counts.weekdayOffCount++;
-      } else if (shiftId === 'FOFF') {
-        counts.FOFF++;
         if (isWeekend) counts.weekendOffCount++;
         else counts.weekdayOffCount++;
       } else if (shiftId === 'PTO') {
@@ -1816,7 +1810,6 @@ function renderFairnessDashboard() {
     if (counts.C > 0) tags.push({ label: '晚班', days: counts.C, cls: 'fairness-bar-late' });
     if (counts.custom > 0) tags.push({ label: '自訂', days: counts.custom, cls: 'fairness-bar-custom' });
     if (counts.OFF > 0) tags.push({ label: '休假', days: counts.OFF, cls: 'fairness-bar-off' });
-    if (counts.FOFF > 0) tags.push({ label: '強休', days: counts.FOFF, cls: 'fairness-bar-foff' });
     if (counts.PTO > 0) tags.push({ label: '特休', days: counts.PTO, cls: 'fairness-bar-pto' });
     if (counts.LOA > 0) tags.push({ label: 'LOA', days: counts.LOA, cls: 'fairness-bar-loa' });
     if (counts.PUB > 0) tags.push({ label: '公假', days: counts.PUB, cls: 'fairness-bar-pub' });
@@ -1983,7 +1976,6 @@ function renderGlobalStats() {
   let totalPmPto = 0;
   let totalLoa = 0;
   let totalPub = 0;
-  let totalFoff = 0;
 
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
@@ -2008,8 +2000,6 @@ function renderGlobalStats() {
         totalLoa += 1;
       } else if (shiftId === 'PUB') {
         totalPub += 1;
-      } else if (shiftId === 'FOFF') {
-        totalFoff += 1;
       }
     });
   }
@@ -2026,7 +2016,6 @@ function renderGlobalStats() {
     if (totalPmPto > 0) desc += ` | 下特: ${totalPmPto}天`;
     if (totalLoa > 0) desc += ` | LOA: ${totalLoa}天`;
     if (totalPub > 0) desc += ` | 公假: ${totalPub}天`;
-    if (totalFoff > 0) desc += ` | 強休: ${totalFoff}天`;
     statHoursDesc.textContent = desc;
   }
 
@@ -2446,7 +2435,7 @@ function exportRosterToCSV() {
   const shiftMap = new Map(shiftList.map(s => [s.id, s.name]));
   shiftMap.set('OFF', '休假');
   shiftMap.set('PTO', '特休');
-  shiftMap.set('FOFF', '強制OFF');
+  shiftMap.set('FOFF', '休假');
   shiftMap.set('LOA', '體檢');
   shiftMap.set('PUB', '公假');
   shiftMap.set('AM_PTO', '上午特休');
@@ -2853,7 +2842,7 @@ function exportRosterToExcel() {
 
   // 輔助函數：取得班別儲存格樣式
   function getShiftCellStyle(shiftId) {
-    if (shiftId === 'OFF') {
+    if (shiftId === 'OFF' || shiftId === 'FOFF') {
       return { bg: '#FFF2CC', text: '#000000', label: 'OFF' };
     }
     if (shiftId === 'PTO') {
@@ -2864,9 +2853,6 @@ function exportRosterToExcel() {
     }
     if (shiftId === 'PUB') {
       return { bg: '#E0F7FA', text: '#00838f', label: '公' };
-    }
-    if (shiftId === 'FOFF') {
-      return { bg: '#FFF8E1', text: '#F59E0B', label: '強休' };
     }
     if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
       return { bg: '#FFF2CC', text: '#FF0000', label: 'PTO-Half' };
