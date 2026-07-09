@@ -375,7 +375,7 @@ function isEmployeeDefaultOffDaysConstraintCompliant(roster, empId, year, month)
     
     // 檢查該員本日是否排班 (非 OFF/PTO/LOA/AM_PTO/PM_PTO)
     const shiftId = roster[dateStr] ? roster[dateStr][empId] : 'OFF';
-    const isWorking = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'AM_PTO' && shiftId !== 'PM_PTO');
+    const isWorking = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'AM_PTO' && shiftId !== 'PM_PTO');
     
     if (isWorking) {
       if (dayOfWeek === d1) workedOnD1 = true;
@@ -435,7 +435,7 @@ function getPreviousMonthBoundaryStats(empId, year, month) {
     const dateStr = formatDateISO(prevYear, prevMonth, d);
     const shiftId = (state.roster && state.roster[dateStr] && state.roster[dateStr][empId]) || 'OFF';
     
-    const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA');
+    const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB');
     if (isWork) {
       consecutiveWork++;
     } else {
@@ -471,6 +471,7 @@ function auditRoster(year, month) {
   shiftMap.set('OFF', { id: 'OFF', name: '休假', start: '00:00', end: '00:00' });
   shiftMap.set('PTO', { id: 'PTO', name: '特休', start: '00:00', end: '00:00' });
   shiftMap.set('LOA', { id: 'LOA', name: '體檢', start: '00:00', end: '00:00' });
+  shiftMap.set('PUB', { id: 'PUB', name: '公假', start: '00:00', end: '00:00' });
   shiftMap.set('AM_PTO', { id: 'AM_PTO', name: '上午特休', start: '00:00', end: '00:00' });
   shiftMap.set('PM_PTO', { id: 'PM_PTO', name: '下午特休', start: '00:00', end: '00:00' });
 
@@ -486,7 +487,7 @@ function auditRoster(year, month) {
       const dateStr = formatDateISO(year, month, day);
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][employee.id]) || 'OFF';
 
-      const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA');
+      const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB');
 
       // 1. 7休1原則 (連續上班不能超過 6 天)
       if (isWork) {
@@ -514,7 +515,7 @@ function auditRoster(year, month) {
         const prevShift = shiftMap.get(prevShiftId);
         const currShift = shiftMap.get(shiftId);
 
-        const leaveTypes = ['OFF', 'PTO', 'LOA', 'AM_PTO', 'PM_PTO'];
+        const leaveTypes = ['OFF', 'PTO', 'LOA', 'PUB', 'AM_PTO', 'PM_PTO'];
         if (prevShift && currShift && !leaveTypes.includes(prevShiftId) && !leaveTypes.includes(shiftId)) {
           const restHours = calculateRestHours(prevShift, currShift);
           if (restHours < 11) {
@@ -531,8 +532,8 @@ function auditRoster(year, month) {
         }
       }
 
-      // 3. 指定休假日工作衝突確認 (是否有排定指定休假日卻被排上班的情況)
-      const leaveTypes = ['OFF', 'PTO', 'LOA', 'AM_PTO', 'PM_PTO'];
+      // 3. 指定休假日/公假工作衝突確認 (是否有排定指定休假日或公假卻被排上班的情況)
+      const leaveTypes = ['OFF', 'PTO', 'LOA', 'PUB', 'AM_PTO', 'PM_PTO'];
       if (employee.pto.includes(dateStr) && !leaveTypes.includes(shiftId)) {
         warnings.push({
           type: 'pto_conflict',
@@ -541,6 +542,16 @@ function auditRoster(year, month) {
           employeeName: employee.name,
           date: dateStr,
           message: `${employee.name} 於本日已設定為指定休假日，卻被指派了「${shiftMap.get(shiftId)?.name || shiftId}」，請予以排休！`
+        });
+      }
+      if ((employee.pub || []).includes(dateStr) && !leaveTypes.includes(shiftId)) {
+        warnings.push({
+          type: 'pub_conflict',
+          severity: 'error',
+          employeeId: employee.id,
+          employeeName: employee.name,
+          date: dateStr,
+          message: `${employee.name} 於本日已設定為公假，卻被指派了「${shiftMap.get(shiftId)?.name || shiftId}」，請改為公假！`
         });
       }
 
@@ -623,7 +634,7 @@ function isRosterCompliantWithMaxConsecutive(rosterCopy, empId, maxDays = 5) {
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     const shiftId = rosterCopy[dateStr][empId];
-    if (shiftId === 'OFF' || shiftId === 'PTO' || shiftId === 'LOA') {
+    if (shiftId === 'OFF' || shiftId === 'PTO' || shiftId === 'LOA' || shiftId === 'PUB') {
       consecutive = 0;
     } else {
       consecutive++;
@@ -654,6 +665,7 @@ function runAutoScheduler() {
     // 優先使用該專員設定的預設固定班別。若無設定，則預設為早班 A
     const defShift = emp.defaultWorkShift || 'A';
     const ptoSet = new Set(emp.pto || []);
+    const pubSet = new Set(emp.pub || []);
     
     // 1. 初始化該專員在當月的初始狀態
     const empRoster = {}; // dateStr -> shiftId
@@ -673,6 +685,8 @@ function runAutoScheduler() {
         } else {
           offDates.push(dateStr);
         }
+      } else if (pubSet.has(dateStr)) {
+        empRoster[dateStr] = 'PUB';
       } else if (isDefaultOff) {
         empRoster[dateStr] = 'OFF';
         offDates.push(dateStr);
@@ -686,7 +700,7 @@ function runAutoScheduler() {
     let consecutive = boundary.consecutiveWork;
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = formatDateISO(year, month, d);
-      if (empRoster[dateStr] === 'OFF' || empRoster[dateStr] === 'PTO') {
+      if (empRoster[dateStr] === 'OFF' || empRoster[dateStr] === 'PTO' || empRoster[dateStr] === 'LOA' || empRoster[dateStr] === 'PUB') {
         consecutive = 0;
       } else {
         if (consecutive >= 5) {
@@ -1057,7 +1071,7 @@ function isEmployeeRosterCompliant(rosterCopy, daysCount, empId) {
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     const shiftId = rosterCopy[dateStr][empId] || 'OFF';
-    const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA');
+    const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB');
 
     // 1. 7休1原則 (連續上班不能超過 6 天)
     if (isWork) {
@@ -1184,7 +1198,7 @@ function checkLaborComplianceForSwap(rosterCopy, daysCount, empId1, empId2) {
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
       const shiftId = rosterCopy[dateStr][empId] || 'OFF';
-      const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA');
+      const isWork = (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB');
 
       if (isWork) {
         consecutive++;
@@ -1331,7 +1345,7 @@ function renderRosterGrid() {
       
       // 檢查是否為調班支援班次 (非預設工作班別，且非休假特休與假別)
       const defShift = employee.defaultWorkShift || 'A';
-      const isSupportShift = (assignedShiftId !== 'OFF' && assignedShiftId !== 'PTO' && assignedShiftId !== 'LOA' && assignedShiftId !== 'AM_PTO' && assignedShiftId !== 'PM_PTO' && assignedShiftId !== defShift);
+      const isSupportShift = (assignedShiftId !== 'OFF' && assignedShiftId !== 'PTO' && assignedShiftId !== 'LOA' && assignedShiftId !== 'PUB' && assignedShiftId !== 'AM_PTO' && assignedShiftId !== 'PM_PTO' && assignedShiftId !== defShift);
 
       // 繪製格子的 Shift Badge
       let badgeLabel = assignedShiftId;
@@ -1343,6 +1357,8 @@ function renderRosterGrid() {
         badgeLabel = '特';
       } else if (assignedShiftId === 'LOA') {
         badgeLabel = 'LOA';
+      } else if (assignedShiftId === 'PUB') {
+        badgeLabel = '公';
       } else if (assignedShiftId === 'AM_PTO') {
         badgeLabel = '上特';
       } else if (assignedShiftId === 'PM_PTO') {
@@ -1373,6 +1389,7 @@ function renderRosterGrid() {
         <option value="OFF" ${assignedShiftId === 'OFF' ? 'selected' : ''}>休假 (OFF)</option>
         <option value="PTO" ${assignedShiftId === 'PTO' ? 'selected' : ''}>特休 (PTO)</option>
         <option value="LOA" ${assignedShiftId === 'LOA' ? 'selected' : ''}>體檢 (LOA)</option>
+        <option value="PUB" ${assignedShiftId === 'PUB' ? 'selected' : ''}>公假 (公)</option>
         <option value="AM_PTO" ${assignedShiftId === 'AM_PTO' ? 'selected' : ''}>上午特休 (上特)</option>
         <option value="PM_PTO" ${assignedShiftId === 'PM_PTO' ? 'selected' : ''}>下午特休 (下特)</option>
       `;
@@ -1440,7 +1457,7 @@ function renderRosterGrid() {
     staffList.forEach(emp => {
       if (emp.defaultWorkShift === 'D') return;
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB') {
         if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
           activeWorking += 0.5;
         } else {
@@ -1560,7 +1577,7 @@ function renderStaffList() {
         <div class="staff-avatar">${emp.name.charAt(0)}</div>
         <div class="staff-details">
           <span class="staff-name">${emp.name}</span>
-          <span class="staff-desc">預設: ${shiftTag} ｜ 特休: ${(emp.pto || []).filter(d => d.startsWith(`${state.currentYear}-${String(state.currentMonth + 1).padStart(2, '0')}`) && getLeaveTypeForPtoDay(emp, d) === 'PTO').length} 天</span>
+          <span class="staff-desc">預設: ${shiftTag} ｜ 特休: ${(emp.pto || []).filter(d => d.startsWith(`${state.currentYear}-${String(state.currentMonth + 1).padStart(2, '0')}`) && getLeaveTypeForPtoDay(emp, d) === 'PTO').length} 天 ｜ 公假: ${(emp.pub || []).filter(d => d.startsWith(`${state.currentYear}-${String(state.currentMonth + 1).padStart(2, '0')}`)).length} 天</span>
         </div>
       </div>
       <div class="staff-actions">
@@ -1692,7 +1709,7 @@ function renderFairnessDashboard() {
   // 統計每個人排班各項指標
   const stats = staffList.map(emp => {
     const counts = { 
-      A: 0, B: 0, C: 0, OFF: 0, PTO: 0, LOA: 0, AM_PTO: 0, PM_PTO: 0, custom: 0, totalWorkHours: 0,
+      A: 0, B: 0, C: 0, OFF: 0, PTO: 0, LOA: 0, PUB: 0, AM_PTO: 0, PM_PTO: 0, custom: 0, totalWorkHours: 0,
       xinyiDays: 0, weekdayOffCount: 0, weekendOffCount: 0
     };
     
@@ -1712,6 +1729,10 @@ function renderFairnessDashboard() {
         else counts.weekdayOffCount++;
       } else if (shiftId === 'LOA') {
         counts.LOA++;
+        if (isWeekend) counts.weekendOffCount++;
+        else counts.weekdayOffCount++;
+      } else if (shiftId === 'PUB') {
+        counts.PUB++;
         if (isWeekend) counts.weekendOffCount++;
         else counts.weekdayOffCount++;
       } else if (shiftId === 'AM_PTO') {
@@ -1776,6 +1797,7 @@ function renderFairnessDashboard() {
     if (counts.OFF > 0) tags.push({ label: '休假', days: counts.OFF, cls: 'fairness-bar-off' });
     if (counts.PTO > 0) tags.push({ label: '特休', days: counts.PTO, cls: 'fairness-bar-pto' });
     if (counts.LOA > 0) tags.push({ label: 'LOA', days: counts.LOA, cls: 'fairness-bar-loa' });
+    if (counts.PUB > 0) tags.push({ label: '公假', days: counts.PUB, cls: 'fairness-bar-pub' });
     if (counts.AM_PTO + counts.PM_PTO > 0) tags.push({ label: '半特', days: counts.AM_PTO + counts.PM_PTO, cls: 'fairness-bar-half-pto' });
 
     const tagsHtml = tags.map(t => {
@@ -1938,12 +1960,13 @@ function renderGlobalStats() {
   let totalAmPto = 0;
   let totalPmPto = 0;
   let totalLoa = 0;
+  let totalPub = 0;
 
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     state.staff.forEach(emp => {
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB') {
         if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
           totalHours += 4;
         } else {
@@ -1960,6 +1983,8 @@ function renderGlobalStats() {
         totalPmPto += 0.5;
       } else if (shiftId === 'LOA') {
         totalLoa += 1;
+      } else if (shiftId === 'PUB') {
+        totalPub += 1;
       }
     });
   }
@@ -1975,6 +2000,7 @@ function renderGlobalStats() {
     if (totalAmPto > 0) desc += ` | 上特: ${totalAmPto}天`;
     if (totalPmPto > 0) desc += ` | 下特: ${totalPmPto}天`;
     if (totalLoa > 0) desc += ` | LOA: ${totalLoa}天`;
+    if (totalPub > 0) desc += ` | 公假: ${totalPub}天`;
     statHoursDesc.textContent = desc;
   }
 
@@ -1995,7 +2021,7 @@ function renderGlobalStats() {
 
   state.staff.forEach(emp => {
     const shiftId = (state.roster[targetDateStr] && state.roster[targetDateStr][emp.id]) || 'OFF';
-    if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+    if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB') {
       if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
         scheduledToday += 0.5;
       } else {
@@ -2118,6 +2144,8 @@ function deleteShift(shiftId) {
 // 9. 人員偏好設定與 PTO 編輯 Modal 互動邏輯
 let activeConfigEmpId = null;
 let tempPtoDays = []; // 暫存特休 YYYY-MM-DD
+let tempPubDays = []; // 暫存公假 YYYY-MM-DD
+let tempForcedOffDays = []; // 暫存預排強迫 OFF YYYY-MM-DD
 let tempDefaultOffDays = []; // 暫存休假預設天數 [0-6]
 
 function openEmployeeConfigModal(empId) {
@@ -2129,6 +2157,7 @@ function openEmployeeConfigModal(empId) {
   
   // 複製一份暫存檔，等按下儲存才套用
   tempPtoDays = [...emp.pto];
+  tempPubDays = [...(emp.pub || [])];
   tempDefaultOffDays = [...(emp.defaultOffDays || [])];
 
   // 1. 渲染 PTO 小型日曆
@@ -2172,12 +2201,13 @@ function renderModalPtoCalendar(emp) {
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const isSelected = tempPtoDays.includes(dateStr);
+    const isPto = tempPtoDays.includes(dateStr);
+    const isPub = tempPubDays.includes(dateStr);
 
     let label = '';
     let cellClass = 'modal-cal-day';
     
-    if (isSelected) {
+    if (isPto) {
       const leaveType = getLeaveTypeForPtoDay(emp, dateStr, tempPtoDays);
       if (leaveType === 'OFF') {
         label = 'OFF';
@@ -2186,6 +2216,9 @@ function renderModalPtoCalendar(emp) {
         label = '特休';
         cellClass += ' pto-active';
       }
+    } else if (isPub) {
+      label = '公假';
+      cellClass += ' pub-active';
     } else {
       const isDefaultOff = emp.defaultOffDays && emp.defaultOffDays.includes(dayOfWeek);
       if (isDefaultOff) {
@@ -2203,11 +2236,14 @@ function renderModalPtoCalendar(emp) {
       ${label ? `<span class="modal-cal-day-badge">${label}</span>` : ''}
     `;
 
-    // 點選切換指定休假日狀態並重繪月曆
+    // 點選切換指定休假日/公假狀態並重繪月曆 (三態循環：無 -> 指定休 -> 公假 -> 無)
     dayCell.addEventListener('click', function() {
       const targetDate = this.dataset.date;
       if (tempPtoDays.includes(targetDate)) {
         tempPtoDays = tempPtoDays.filter(x => x !== targetDate);
+        tempPubDays.push(targetDate);
+      } else if (tempPubDays.includes(targetDate)) {
+        tempPubDays = tempPubDays.filter(x => x !== targetDate);
       } else {
         tempPtoDays.push(targetDate);
       }
@@ -2304,11 +2340,13 @@ function saveEmployeeConfig() {
   const empIndex = state.staff.findIndex(e => e.id === activeConfigEmpId);
   if (empIndex === -1) return;
 
-  // 取得舊的 pto 列表以便比對哪些被移除了
+  // 取得舊的 pto 列表與 pub 列表以便比對哪些被移除了
   const oldPto = state.staff[empIndex].pto || [];
+  const oldPub = state.staff[empIndex].pub || [];
 
   // 套用暫存與輸入變數
   state.staff[empIndex].pto = tempPtoDays;
+  state.staff[empIndex].pub = tempPubDays;
   state.staff[empIndex].defaultOffDays = tempDefaultOffDays;
   state.staff[empIndex].defaultWorkShift = document.getElementById('input-emp-default-shift').value || 'A';
 
@@ -2317,14 +2355,18 @@ function saveEmployeeConfig() {
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
     if (state.roster[dateStr]) {
-      const isSelected = tempPtoDays.includes(dateStr);
-      if (isSelected) {
+      const isPto = tempPtoDays.includes(dateStr);
+      const isPub = tempPubDays.includes(dateStr);
+      if (isPto) {
         // 被選中：依據新規則設定為 OFF 或 PTO
         const leaveType = getLeaveTypeForPtoDay(state.staff[empIndex], dateStr, tempPtoDays);
         state.roster[dateStr][activeConfigEmpId] = leaveType;
+      } else if (isPub) {
+        // 被選中為公假
+        state.roster[dateStr][activeConfigEmpId] = 'PUB';
       } else {
-        // 未被選中：如果以前是選中的指定休假日 (在 oldPto 中)，現在被取消了，改回預設班別 (若是固定休假日則改回 OFF)
-        if (oldPto.includes(dateStr)) {
+        // 未被選中：如果以前是選中的指定休假日或公假，現在被取消了，改回預設班別 (若是固定休假日則改回 OFF)
+        if (oldPto.includes(dateStr) || oldPub.includes(dateStr)) {
           const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
           const isDefaultOff = tempDefaultOffDays.includes(dayOfWeek);
           state.roster[dateStr][activeConfigEmpId] = isDefaultOff ? 'OFF' : (state.staff[empIndex].defaultWorkShift || 'A');
@@ -2396,7 +2438,7 @@ function exportRosterToCSV() {
     staffList.forEach(emp => {
       if (emp.defaultWorkShift === 'D') return;
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB') {
         if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
           activeWorking += 0.5;
         } else {
@@ -2863,6 +2905,7 @@ function exportRosterToExcel() {
     let offCount = 0;
     let ptoCount = 0;
     let loaCount = 0;
+    let pubCount = 0;
 
     for (let d = 1; d <= daysCount; d++) {
       const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
@@ -2874,6 +2917,8 @@ function exportRosterToExcel() {
         ptoCount++;
       } else if (sId === 'LOA') {
         loaCount++;
+      } else if (sId === 'PUB') {
+        pubCount++;
       } else if (sId === 'AM_PTO' || sId === 'PM_PTO') {
         ptoCount += 0.5;
         workCount += 0.5;
@@ -2893,6 +2938,7 @@ function exportRosterToExcel() {
       <td style="background-color: ${color}; font-weight: bold;">${ptoCount}</td>
       <td style="background-color: ${color}; font-weight: bold;">0</td>
       <td style="background-color: ${color}; font-weight: bold;">${loaCount}</td>
+      <td style="background-color: ${color}; font-weight: bold;">${pubCount}</td>
     `;
 
     for (let d = 1; d <= daysCount; d++) {
@@ -2906,7 +2952,7 @@ function exportRosterToExcel() {
 
     // 員工第二列 (備註與 OT)
     html += `    <tr>
-      <td colspan="5" class="ot-cell" style="background-color: ${color};">OT</td>
+      <td colspan="6" class="ot-cell" style="background-color: ${color};">OT</td>
     `;
     for (let d = 1; d <= daysCount; d++) {
       html += `      <td class="comment-cell"></td>\n`;
@@ -2916,7 +2962,7 @@ function exportRosterToExcel() {
 
   // 4. 寫入每日可額外休假 (PTO) 額度列
   html += `    <tr>
-      <td colspan="9" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px;">可再休 PTO</td>
+      <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px;">可再休 PTO</td>
   `;
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
@@ -2933,7 +2979,7 @@ function exportRosterToExcel() {
     staffList.forEach(emp => {
       if (emp.defaultWorkShift === 'D') return;
       const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA') {
+      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB') {
         if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
           activeWorking += 0.5;
         } else {

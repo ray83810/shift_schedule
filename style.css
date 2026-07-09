@@ -55,6 +55,10 @@
   --shift-loa-text: #818cf8;
   --shift-loa-border: rgba(99, 102, 241, 0.3);
 
+  --shift-pub-bg: rgba(6, 182, 212, 0.15);
+  --shift-pub-text: #22d3ee;
+  --shift-pub-border: rgba(6, 182, 212, 0.3);
+
   --shift-am-pto-bg: rgba(236, 72, 153, 0.15);
   --shift-am-pto-text: #f472b6;
   --shift-am-pto-border: rgba(236, 72, 153, 0.3);
@@ -124,6 +128,10 @@
   --shift-loa-bg: rgba(99, 102, 241, 0.12);
   --shift-loa-text: #4f46e5;
   --shift-loa-border: rgba(99, 102, 241, 0.25);
+
+  --shift-pub-bg: rgba(6, 182, 212, 0.12);
+  --shift-pub-text: #0891b2;
+  --shift-pub-border: rgba(6, 182, 212, 0.25);
 
   --shift-am-pto-bg: rgba(236, 72, 153, 0.12);
   --shift-am-pto-text: #db2777;
@@ -1010,6 +1018,7 @@ h1, h2, h3, h4 {
 .fairness-tag.fairness-bar-pto { background-color: #e879f9; }
 .fairness-tag.fairness-bar-loa { background-color: #f97316; }
 .fairness-tag.fairness-bar-half-pto { background-color: #a78bfa; }
+.fairness-tag.fairness-bar-pub { background-color: var(--shift-pub-text); }
 
 
 /* Center Workspace Area: Grid View Roster */
@@ -1248,6 +1257,12 @@ h1, h2, h3, h4 {
   background-color: var(--shift-loa-bg);
   color: var(--shift-loa-text);
   border-color: var(--shift-loa-border);
+}
+
+.shift-badge.shift-PUB {
+  background-color: var(--shift-pub-bg);
+  color: var(--shift-pub-text);
+  border-color: var(--shift-pub-border);
 }
 
 .shift-badge.shift-AM_PTO {
@@ -1548,6 +1563,20 @@ h1, h2, h3, h4 {
   cursor: default;
 }
 
+.modal-cal-day.pub-active {
+  background: var(--shift-pub-bg) !important;
+  color: var(--shift-pub-text) !important;
+  border-color: var(--shift-pub-border) !important;
+  box-shadow: 0 0 6px var(--shift-pub-border);
+}
+
+.modal-cal-day.forced-off-active {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
 .modal-cal-day-badge {
   font-size: 0.55rem;
   padding: 1px 4px;
@@ -1567,9 +1596,24 @@ h1, h2, h3, h4 {
   color: #34d399;
 }
 
+.forced-off-active .modal-cal-day-badge {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.pub-active .modal-cal-day-badge {
+  background: rgba(6, 182, 212, 0.2);
+  color: #22d3ee;
+}
+
 .pto-default-off .modal-cal-day-badge {
   background: rgba(107, 114, 128, 0.15);
   color: #9ca3af;
+}
+
+.pub-active .modal-cal-day-badge {
+  background: rgba(6, 182, 212, 0.2);
+  color: var(--shift-pub-text);
 }
 
 .modal-cal-day-name {
@@ -1897,6 +1941,12 @@ h1, h2, h3, h4 {
     background-color: #e0e7ff !important;
     border-color: #6366f1 !important;
     color: #4338ca !important;
+  }
+
+  .shift-badge.shift-PUB {
+    background-color: #e0f7fa !important;
+    border-color: #00bcd4 !important;
+    color: #00838f !important;
   }
 
   .shift-badge.shift-AM_PTO {
