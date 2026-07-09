@@ -569,13 +569,17 @@ function auditRoster(year, month) {
     }
 
     // 4. 每月固定休假天數驗證
-    if (regularOffDays < state.daysOff) {
+    if (regularOffDays !== state.daysOff) {
+      const isShort = regularOffDays < state.daysOff;
+      const diff = Math.abs(state.daysOff - regularOffDays);
       warnings.push({
-        type: 'off_days_short',
+        type: isShort ? 'off_days_short' : 'off_days_excess',
         severity: 'warning',
         employeeId: employee.id,
         employeeName: employee.name,
-        message: `${employee.name} 本月排定一般休假共 ${regularOffDays} 天，少於設定的固定休假天數 ${state.daysOff} 天（相差 ${state.daysOff - regularOffDays} 天）。`
+        message: isShort
+          ? `${employee.name} 本月排定一般休假共 ${regularOffDays} 天，少於設定的固定休假天數 ${state.daysOff} 天（相差 ${diff} 天）。`
+          : `${employee.name} 本月排定一般休假共 ${regularOffDays} 天，多於設定的固定休假天數 ${state.daysOff} 天（相差 ${diff} 天）。`
       });
     }
     
