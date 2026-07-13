@@ -1105,83 +1105,105 @@ function runAutoScheduler() {
   rebuildSortedStaffIds();
   state.roster = newRoster;
   
-  // 自動編排第二階段值日生班表
-  runDutyAutoScheduler(newRoster);
-  
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
 }
 
-// 智慧編排第二階段值日生班表 (排除週六、週日與週一自願制，週五若次數已達3次則不排班以保平衡)
+// 智慧編排第二階段值日生班表 (只安排週二、週三、週四，且每人限制剛好最多3次以保極限平衡)
 function runDutyAutoScheduler(rosterObj) {
   const year = state.currentYear;
   const month = state.currentMonth;
   const daysCount = getDaysInMonth(year, month);
   const staffList = state.staff;
   
-  const newDutyRoster = {};
-  
-  // 統計每個同仁值日次數
-  const earlyDutyCounts = {};
-  const lateDutyCounts = {};
-  staffList.forEach(emp => {
-    earlyDutyCounts[emp.id] = 0;
-    lateDutyCounts[emp.id] = 0;
-  });
-
+  // 1. 搜集所有可排班的日期與時段 (僅週二、週三、週四)
+  const slots = [];
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(year, month, d);
     const dayOfWeek = getDayOfWeek(year, month, d);
-    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-    const isMonday = (dayOfWeek === 1);
-    const isFriday = (dayOfWeek === 5);
     
-    newDutyRoster[dateStr] = { early: "", late: "" };
-    
-    if (isWeekend || isMonday) {
-      continue;
-    }
-    
-    // 1. 早班值日 (12:00 - 17:00, 適合 A/B 班同仁)
-    const earlyCandidates = staffList.filter(emp => {
-      const shiftId = (rosterObj[dateStr] && rosterObj[dateStr][emp.id]) || 'OFF';
-      return shiftId === 'A' || shiftId === 'B';
-    });
-    
-    if (earlyCandidates.length > 0) {
-      earlyCandidates.sort((a, b) => earlyDutyCounts[a.id] - earlyDutyCounts[b.id]);
-      const bestCandidate = earlyCandidates[0];
-      const bestCandidateCount = earlyDutyCounts[bestCandidate.id];
-      
-      if (isFriday && bestCandidateCount >= 3) {
-        newDutyRoster[dateStr].early = "";
-      } else {
-        newDutyRoster[dateStr].early = bestCandidate.id;
-        earlyDutyCounts[bestCandidate.id]++;
-      }
-    }
-    
-    // 2. 晚班值日 (17:00 - 21:00, 適合 C/D 班同仁)
-    const lateCandidates = staffList.filter(emp => {
-      const shiftId = (rosterObj[dateStr] && rosterObj[dateStr][emp.id]) || 'OFF';
-      return shiftId === 'C' || shiftId === 'D';
-    });
-    
-    if (lateCandidates.length > 0) {
-      lateCandidates.sort((a, b) => lateDutyCounts[a.id] - lateDutyCounts[b.id]);
-      const bestCandidate = lateCandidates[0];
-      const bestCandidateCount = lateDutyCounts[bestCandidate.id];
-      
-      if (isFriday && bestCandidateCount >= 3) {
-        newDutyRoster[dateStr].late = "";
-      } else {
-        newDutyRoster[dateStr].late = bestCandidate.id;
-        lateDutyCounts[bestCandidate.id]++;
-      }
+    if (dayOfWeek === 2 || dayOfWeek === 3 || dayOfWeek === 4) {
+      slots.push({ date: dateStr, role: 'early' });
+      slots.push({ date: dateStr, role: 'late' });
     }
   }
   
-  state.dutyRoster = newDutyRoster;
+  // 2. 初始化分配容器與每人值日次數計數器
+  const assigned = {};
+  for (let d = 1; d <= daysCount; d++) {
+    const dateStr = formatDateISO(year, month, d);
+    assigned[dateStr] = { early: "", late: "" };
+  }
+  
+  const empCounts = {};
+  staffList.forEach(emp => {
+    empCounts[emp.id] = 0;
+  });
+
+  // 3. 回溯搜尋演算法 (Backtracking Solver)
+  function backtrack(slotIdx) {
+    if (slotIdx === slots.length) {
+      return true;
+    }
+    
+    const slot = slots[slotIdx];
+    const dateStr = slot.date;
+    const role = slot.role;
+    
+    // 篩選當天有上班且班別符合規定的候選人
+    const candidates = staffList.filter(emp => {
+      const shiftId = (rosterObj[dateStr] && rosterObj[dateStr][emp.id]) || 'OFF';
+      if (role === 'early') {
+        return shiftId === 'A' || shiftId === 'B';
+      } else {
+        return shiftId === 'C' || shiftId === 'D';
+      }
+    });
+    
+    // 按當前值日次數升序排序，使次數最少者優先被指派
+    candidates.sort((a, b) => empCounts[a.id] - empCounts[b.id]);
+    
+    for (let i = 0; i < candidates.length; i++) {
+      const emp = candidates[i];
+      
+      // 限制一：每位同仁一個月排定值日上限為 3 次
+      if (empCounts[emp.id] >= 3) {
+        continue;
+      }
+      
+      // 限制二：同一天不重複兼任早晚班值日
+      if (role === 'early' && assigned[dateStr].late === emp.id) continue;
+      if (role === 'late' && assigned[dateStr].early === emp.id) continue;
+      
+      // 試著指派
+      assigned[dateStr][role] = emp.id;
+      empCounts[emp.id]++;
+      
+      if (backtrack(slotIdx + 1)) {
+        return true;
+      }
+      
+      // 失敗則回溯
+      assigned[dateStr][role] = "";
+      empCounts[emp.id]--;
+    }
+    
+    // 允許該時段空缺以滿足每人 3 次的極限限制
+    assigned[dateStr][role] = "";
+    if (backtrack(slotIdx + 1)) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  // 4. 啟動求解器
+  backtrack(0);
+  
+  // 5. 寫入狀態並標記未儲存
+  state.dutyRoster = assigned;
+  state.hasUnsavedChanges = true;
+  updateUnsavedChangesUI();
 }
 
 // 隨機排入多餘的休假天數 (避開預設休假日與特休，符合勞基法)
@@ -3805,6 +3827,34 @@ document.addEventListener('DOMContentLoaded', () => {
     btnExport2.addEventListener('click', () => {
       exportRosterToExcel(2);
       closeChooseModal();
+    });
+  }
+
+  // 10.5 一鍵智慧編排值日生按鈕
+  const btnDutySchedule = document.getElementById('btn-duty-schedule');
+  if (btnDutySchedule) {
+    btnDutySchedule.addEventListener('click', function(e) {
+      e.preventDefault();
+      
+      const btn = this;
+      const originalText = btn.innerHTML;
+      
+      // 安排中微動畫與按鈕停用
+      btn.disabled = true;
+      btn.innerHTML = `
+        <svg class="btn-icon-svg animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+        <span>值日安排中...</span>
+      `;
+
+      setTimeout(() => {
+        runDutyAutoScheduler(state.roster);
+        renderAll();
+        
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        
+        alert('值日生安排完成！已自動將每人本月值日天數限制為最多 3 天（已空出週末、週一與週五）。');
+      }, 500);
     });
   }
 
