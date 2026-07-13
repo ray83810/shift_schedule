@@ -16,8 +16,11 @@ const state = {
   hasUnsavedChanges: false, // 標記當前是否有未儲存的變更
   googleWebAppUrl: 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec',      // Google Sheets Apps Script Web App 網址
   backupRoster: {},          // 保存上次儲存的班表備份以供「取消變更」復原
+  backupDutyRoster: {},      // 保存上次儲存的值日生班表備份
   manualEdits: {},            // 追蹤手動編輯的格子 { 'YYYY-MM-DD_staffId': true }
-  monthlyDaysOff: {}         // 追蹤每個月自訂的休假天數 { 'YYYY-MM': number }
+  monthlyDaysOff: {},         // 追蹤每個月自訂的休假天數 { 'YYYY-MM': number }
+  dutyRoster: {},             // 值日生班表 { 'YYYY-MM-DD': { early: empId, late: empId } }
+  currentStage: 1             // 目前顯示階段：1 = 第一階段(一般排班), 2 = 第二階段(值日生)
 };
 
 let dragSrcEl = null;
@@ -164,10 +167,13 @@ function initDatabase() {
       state.shifts = parsed.shifts || [];
       state.coverageTargets = parsed.coverageTargets || {};
       state.roster = parsed.roster || {};
+      state.dutyRoster = parsed.dutyRoster || {};
+      state.currentStage = parsed.currentStage || 1;
       state.theme = parsed.theme || 'dark';
       state.googleWebAppUrl = parsed.googleWebAppUrl || 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec';
 
       state.backupRoster = JSON.parse(JSON.stringify(state.roster));
+      state.backupDutyRoster = JSON.parse(JSON.stringify(state.dutyRoster));
       state.backupStaff = JSON.parse(JSON.stringify(state.staff));
       state.manualEdits = {};
       state.hasUnsavedChanges = false;
@@ -201,8 +207,11 @@ function loadDefaults() {
   state.shifts = JSON.parse(JSON.stringify(DEFAULT_SHIFTS));
   state.coverageTargets = JSON.parse(JSON.stringify(DEFAULT_COVERAGE));
   state.roster = {}; // 預設空班表
+  state.dutyRoster = {}; // 預設空值日生班表
+  state.currentStage = 1;
   state.googleWebAppUrl = 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec';
   state.backupRoster = {};
+  state.backupDutyRoster = {};
   state.backupStaff = JSON.parse(JSON.stringify(state.staff));
   state.manualEdits = {};
   state.hasUnsavedChanges = false;
@@ -634,6 +643,79 @@ function auditRoster(year, month) {
     });
   }
 
+  // 三、第二階段值日生合規性檢查
+  if (state.dutyRoster) {
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(year, month, d);
+      const dayOfWeek = getDayOfWeek(year, month, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+      
+      const duty = state.dutyRoster[dateStr];
+      if (!duty) continue;
+      
+      if (isWeekend) {
+        if (duty.early || duty.late) {
+          warnings.push({
+            type: 'duty_weekend_violation',
+            severity: 'warning',
+            date: dateStr,
+            message: `${dateStr} (${getDayOfWeekName(dayOfWeek)}) 週末不應安排值日生！`
+          });
+        }
+      } else {
+        const leaveTypes = ['OFF', 'PTO', 'LOA', 'PUB', 'FOFF', 'AM_PTO', 'PM_PTO'];
+        
+        // 早班值日檢查
+        if (duty.early) {
+          const emp = staffMap.get(duty.early);
+          const shiftId = (state.roster[dateStr] && state.roster[dateStr][duty.early]) || 'OFF';
+          
+          if (leaveTypes.includes(shiftId)) {
+            warnings.push({
+              type: 'duty_on_leave',
+              severity: 'error',
+              date: dateStr,
+              employeeId: duty.early,
+              message: `${dateStr} (${getDayOfWeekName(dayOfWeek)}) 早班值日生 ${emp ? emp.name : duty.early} 當天為休假！`
+            });
+          } else if (shiftId !== 'A' && shiftId !== 'B') {
+            warnings.push({
+              type: 'duty_shift_mismatch',
+              severity: 'error',
+              date: dateStr,
+              employeeId: duty.early,
+              message: `${dateStr} (${getDayOfWeekName(dayOfWeek)}) 早班值日生 ${emp ? emp.name : duty.early} 當天班別為「${shiftMap.get(shiftId)?.name || shiftId}」，不符 8點班(A) 或 11點班(B) 規定！`
+            });
+          }
+        }
+        
+        // 晚班值日檢查
+        if (duty.late) {
+          const emp = staffMap.get(duty.late);
+          const shiftId = (state.roster[dateStr] && state.roster[dateStr][duty.late]) || 'OFF';
+          
+          if (leaveTypes.includes(shiftId)) {
+            warnings.push({
+              type: 'duty_on_leave',
+              severity: 'error',
+              date: dateStr,
+              employeeId: duty.late,
+              message: `${dateStr} (${getDayOfWeekName(dayOfWeek)}) 晚班值日生 ${emp ? emp.name : duty.late} 當天為休假！`
+            });
+          } else if (shiftId !== 'C' && shiftId !== 'D') {
+            warnings.push({
+              type: 'duty_shift_mismatch',
+              severity: 'error',
+              date: dateStr,
+              employeeId: duty.late,
+              message: `${dateStr} (${getDayOfWeekName(dayOfWeek)}) 晚班值日生 ${emp ? emp.name : duty.late} 當天班別為「${shiftMap.get(shiftId)?.name || shiftId}」，不符 晚班(C) 或 Molly(D) 規定！`
+            });
+          }
+        }
+      }
+    }
+  }
+
   return warnings;
 }
 
@@ -1001,8 +1083,84 @@ function runAutoScheduler() {
   // 5. 將結果套用至系統狀態並標記未儲存
   rebuildSortedStaffIds();
   state.roster = newRoster;
+  
+  // 自動編排第二階段值日生班表
+  runDutyAutoScheduler(newRoster);
+  
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
+}
+
+// 智慧編排第二階段值日生班表 (排除週六、週日與週一自願制，週五若次數已達3次則不排班以保平衡)
+function runDutyAutoScheduler(rosterObj) {
+  const year = state.currentYear;
+  const month = state.currentMonth;
+  const daysCount = getDaysInMonth(year, month);
+  const staffList = state.staff;
+  
+  const newDutyRoster = {};
+  
+  // 統計每個同仁值日次數
+  const earlyDutyCounts = {};
+  const lateDutyCounts = {};
+  staffList.forEach(emp => {
+    earlyDutyCounts[emp.id] = 0;
+    lateDutyCounts[emp.id] = 0;
+  });
+
+  for (let d = 1; d <= daysCount; d++) {
+    const dateStr = formatDateISO(year, month, d);
+    const dayOfWeek = getDayOfWeek(year, month, d);
+    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+    const isMonday = (dayOfWeek === 1);
+    const isFriday = (dayOfWeek === 5);
+    
+    newDutyRoster[dateStr] = { early: "", late: "" };
+    
+    if (isWeekend || isMonday) {
+      continue;
+    }
+    
+    // 1. 早班值日 (12:00 - 17:00, 適合 A/B 班同仁)
+    const earlyCandidates = staffList.filter(emp => {
+      const shiftId = (rosterObj[dateStr] && rosterObj[dateStr][emp.id]) || 'OFF';
+      return shiftId === 'A' || shiftId === 'B';
+    });
+    
+    if (earlyCandidates.length > 0) {
+      earlyCandidates.sort((a, b) => earlyDutyCounts[a.id] - earlyDutyCounts[b.id]);
+      const bestCandidate = earlyCandidates[0];
+      const bestCandidateCount = earlyDutyCounts[bestCandidate.id];
+      
+      if (isFriday && bestCandidateCount >= 3) {
+        newDutyRoster[dateStr].early = "";
+      } else {
+        newDutyRoster[dateStr].early = bestCandidate.id;
+        earlyDutyCounts[bestCandidate.id]++;
+      }
+    }
+    
+    // 2. 晚班值日 (17:00 - 21:00, 適合 C/D 班同仁)
+    const lateCandidates = staffList.filter(emp => {
+      const shiftId = (rosterObj[dateStr] && rosterObj[dateStr][emp.id]) || 'OFF';
+      return shiftId === 'C' || shiftId === 'D';
+    });
+    
+    if (lateCandidates.length > 0) {
+      lateCandidates.sort((a, b) => lateDutyCounts[a.id] - lateDutyCounts[b.id]);
+      const bestCandidate = lateCandidates[0];
+      const bestCandidateCount = lateDutyCounts[bestCandidate.id];
+      
+      if (isFriday && bestCandidateCount >= 3) {
+        newDutyRoster[dateStr].late = "";
+      } else {
+        newDutyRoster[dateStr].late = bestCandidate.id;
+        lateDutyCounts[bestCandidate.id]++;
+      }
+    }
+  }
+  
+  state.dutyRoster = newDutyRoster;
 }
 
 // 隨機排入多餘的休假天數 (避開預設休假日與特休，符合勞基法)
@@ -1504,6 +1662,154 @@ function renderRosterGrid() {
   }
   grid.appendChild(ptoRow);
 
+  if (state.currentStage === 2) {
+    // --- 4. 產生早班值日列 ---
+    const earlyRow = document.createElement('tr');
+    earlyRow.className = 'duty-row-early';
+    
+    const tdEarlyTitle = document.createElement('td');
+    tdEarlyTitle.className = 'col-staff-name';
+    tdEarlyTitle.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.2rem; color: var(--accent-blue);">🌅</span>
+        <div>
+          <span class="staff-name duty-cell-early-header">早班值日</span>
+          <div class="staff-desc">12:00 - 17:00 (A/B班)</div>
+        </div>
+      </div>
+    `;
+    earlyRow.appendChild(tdEarlyTitle);
+    
+    // --- 5. 產生晚班值日列 ---
+    const lateRow = document.createElement('tr');
+    lateRow.className = 'duty-row-late';
+    
+    const tdLateTitle = document.createElement('td');
+    tdLateTitle.className = 'col-staff-name';
+    tdLateTitle.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.2rem; color: #8b5cf6;">🌃</span>
+        <div>
+          <span class="staff-name duty-cell-late-header">晚班值日</span>
+          <div class="staff-desc">17:00 - 21:00 (C/D班)</div>
+        </div>
+      </div>
+    `;
+    lateRow.appendChild(tdLateTitle);
+
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+      const isMonday = (dayOfWeek === 1);
+      
+      const tdEarly = document.createElement('td');
+      tdEarly.className = 'roster-cell';
+      if (isWeekend) tdEarly.classList.add('date-weekend', 'duty-cell-weekend');
+      
+      const tdLate = document.createElement('td');
+      tdLate.className = 'roster-cell';
+      if (isWeekend) tdLate.classList.add('date-weekend', 'duty-cell-weekend');
+
+      if (isWeekend) {
+        tdEarly.innerHTML = 'X';
+        tdLate.innerHTML = 'X';
+      } else {
+        // 平日值日生下拉選單
+        if (!state.dutyRoster[dateStr]) {
+          state.dutyRoster[dateStr] = { early: "", late: "" };
+        }
+        const currentEarlyVal = state.dutyRoster[dateStr].early || "";
+        const currentLateVal = state.dutyRoster[dateStr].late || "";
+        
+        // 週一特有 class
+        if (isMonday) {
+          tdEarly.classList.add('duty-cell-monday');
+          tdLate.classList.add('duty-cell-monday');
+          if (currentEarlyVal) tdEarly.classList.add('has-value');
+          if (currentLateVal) tdLate.classList.add('has-value');
+        }
+
+        // 篩選當天有上班的人
+        // 早班值日候選人 (Shift A 或 B)
+        const earlyCandidates = staffList.filter(emp => {
+          const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+          return shiftId === 'A' || shiftId === 'B';
+        });
+        
+        // 晚班值日候選人 (Shift C 或 D)
+        const lateCandidates = staffList.filter(emp => {
+          const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+          return shiftId === 'C' || shiftId === 'D';
+        });
+
+        // 確保目前指派的人即使資格不符，也呈呈現選單中以防跑掉且利於警告顯示
+        if (currentEarlyVal && !earlyCandidates.some(e => e.id === currentEarlyVal)) {
+          const empObj = staffList.find(e => e.id === currentEarlyVal);
+          if (empObj) earlyCandidates.push(empObj);
+        }
+        
+        if (currentLateVal && !lateCandidates.some(e => e.id === currentLateVal)) {
+          const empObj = staffList.find(e => e.id === currentLateVal);
+          if (empObj) lateCandidates.push(empObj);
+        }
+
+        // 產生早班下拉選單 HTML
+        let earlyOptions = `<option value="">- 請選擇 -</option>`;
+        earlyCandidates.forEach(emp => {
+          earlyOptions += `<option value="${emp.id}" ${currentEarlyVal === emp.id ? 'selected' : ''}>${emp.name}</option>`;
+        });
+        
+        tdEarly.innerHTML = `
+          <div class="duty-select-wrapper">
+            <select class="duty-select" data-date="${dateStr}" data-type="early">
+              ${earlyOptions}
+            </select>
+          </div>
+        `;
+        
+        // 產生晚班下拉選單 HTML
+        let lateOptions = `<option value="">- 請選擇 -</option>`;
+        lateCandidates.forEach(emp => {
+          lateOptions += `<option value="${emp.id}" ${currentLateVal === emp.id ? 'selected' : ''}>${emp.name}</option>`;
+        });
+        
+        tdLate.innerHTML = `
+          <div class="duty-select-wrapper">
+            <select class="duty-select" data-date="${dateStr}" data-type="late">
+              ${lateOptions}
+            </select>
+          </div>
+        `;
+      }
+      
+      earlyRow.appendChild(tdEarly);
+      lateRow.appendChild(tdLate);
+    }
+    
+    grid.appendChild(earlyRow);
+    grid.appendChild(lateRow);
+  }
+
+  // 綁定動態產生的值日生下拉選單事件
+  document.querySelectorAll('.duty-select').forEach(select => {
+    select.addEventListener('change', function() {
+      const date = this.dataset.date;
+      const type = this.dataset.type; // 'early' or 'late'
+      const val = this.value;
+      
+      pushUndoState();
+      
+      if (!state.dutyRoster[date]) {
+        state.dutyRoster[date] = { early: "", late: "" };
+      }
+      state.dutyRoster[date][type] = val;
+      
+      state.hasUnsavedChanges = true;
+      updateUnsavedChangesUI();
+      renderAll();
+    });
+  });
 
   // 綁定動態產生的行事曆儲存格事件 (Dropdown 調整班表)
   document.querySelectorAll('.cell-select').forEach(select => {
@@ -2501,6 +2807,32 @@ function exportRosterToCSV() {
   }
   csvContent += ptoRow.join(',') + '\n';
 
+  // 3.5 寫入值日生列
+  if (state.dutyRoster) {
+    const earlyDutyRow = ['早班值日'];
+    const lateDutyRow = ['晚班值日'];
+    
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+      
+      if (isWeekend) {
+        earlyDutyRow.push('X');
+        lateDutyRow.push('X');
+      } else {
+        const duty = state.dutyRoster[dateStr] || { early: "", late: "" };
+        const earlyEmp = staffList.find(e => e.id === duty.early);
+        const lateEmp = staffList.find(e => e.id === duty.late);
+        earlyDutyRow.push(earlyEmp ? earlyEmp.name : '');
+        lateDutyRow.push(lateEmp ? lateEmp.name : '');
+      }
+    }
+    csvContent += earlyDutyRow.join(',') + '\n';
+    csvContent += lateDutyRow.join(',') + '\n';
+  }
+
+
   try {
     // 4. 下載觸發
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2628,6 +2960,7 @@ function updateUnsavedChangesUI() {
 // 儲存所有變更 (包含班表與客服名單)
 function saveRosterChanges() {
   state.backupRoster = JSON.parse(JSON.stringify(state.roster));
+  state.backupDutyRoster = JSON.parse(JSON.stringify(state.dutyRoster || {}));
   state.backupStaff = JSON.parse(JSON.stringify(state.staff));
   state.hasUnsavedChanges = false;
   state.manualEdits = {}; // 儲存後清空手動編輯標記
@@ -2647,6 +2980,7 @@ function saveRosterChanges() {
 function cancelRosterChanges() {
   if (confirm('確定要取消所有未儲存的變更嗎？此動作將還原為上一次儲存的班表與人員設定狀態。')) {
     state.roster = JSON.parse(JSON.stringify(state.backupRoster || {}));
+    state.dutyRoster = JSON.parse(JSON.stringify(state.backupDutyRoster || {}));
     state.staff = JSON.parse(JSON.stringify(state.backupStaff || []));
     state.hasUnsavedChanges = false;
     state.manualEdits = {}; // 取消後清空手動編輯標記
@@ -3046,6 +3380,73 @@ function exportRosterToExcel() {
   }
   html += `    </tr>\n`;
 
+  // 5. 寫入值日生列 (Excel 格式)
+  if (state.dutyRoster) {
+    // 早班值日 row
+    html += `    <tr>
+      <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px; background-color: #E6F0FA;">早班值日 (12:00-17:00)</td>
+    `;
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+      const isMonday = (dayOfWeek === 1);
+      
+      if (isWeekend) {
+        html += `      <td style="background-color: #E2E8F0; color: #7F7F7F; font-weight: bold;">X</td>\n`;
+      } else {
+        const duty = state.dutyRoster[dateStr] || { early: "", late: "" };
+        const emp = staffList.find(e => e.id === duty.early);
+        const name = emp ? emp.name : "";
+        
+        let styleStr = "background-color: #FFFFFF;";
+        let label = name;
+        if (isMonday) {
+          if (name) {
+            styleStr = "background-color: #FFF9E6; font-weight: bold; color: #B7791F;";
+          } else {
+            styleStr = "background-color: #FFF9E6; color: #D69E2E; font-style: italic;";
+            label = "自願";
+          }
+        }
+        html += `      <td style="${styleStr}">${label}</td>\n`;
+      }
+    }
+    html += `    </tr>\n`;
+
+    // 晚班值日 row
+    html += `    <tr>
+      <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px; background-color: #F0E6FF;">晚班值日 (17:00-21:00)</td>
+    `;
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+      const isMonday = (dayOfWeek === 1);
+      
+      if (isWeekend) {
+        html += `      <td style="background-color: #E2E8F0; color: #7F7F7F; font-weight: bold;">X</td>\n`;
+      } else {
+        const duty = state.dutyRoster[dateStr] || { early: "", late: "" };
+        const emp = staffList.find(e => e.id === duty.late);
+        const name = emp ? emp.name : "";
+        
+        let styleStr = "background-color: #FFFFFF;";
+        let label = name;
+        if (isMonday) {
+          if (name) {
+            styleStr = "background-color: #FFF9E6; font-weight: bold; color: #B7791F;";
+          } else {
+            styleStr = "background-color: #FFF9E6; color: #D69E2E; font-style: italic;";
+            label = "自願";
+          }
+        }
+        html += `      <td style="${styleStr}">${label}</td>\n`;
+      }
+    }
+    html += `    </tr>\n`;
+  }
+
   html += `  </table>
 </body>
 </html>`;
@@ -3068,10 +3469,11 @@ function exportRosterToExcel() {
 
 // A.3 智慧排班與手動調整之復原與重做 (Undo / Redo 邏輯)
 function pushUndoState() {
-  // 複製一份當前的 roster 狀態與手動編輯狀態並推入 undoStack
+  // 複製一份當前的 roster 狀態、手動編輯狀態與值日生狀態並推入 undoStack
   const rosterCopy = JSON.parse(JSON.stringify(state.roster));
   const manualEditsCopy = JSON.parse(JSON.stringify(state.manualEdits || {}));
-  undoStack.push({ roster: rosterCopy, manualEdits: manualEditsCopy });
+  const dutyRosterCopy = JSON.parse(JSON.stringify(state.dutyRoster || {}));
+  undoStack.push({ roster: rosterCopy, manualEdits: manualEditsCopy, dutyRoster: dutyRosterCopy });
   
   // 限制 stack 大小 (例如最多 50 步)
   if (undoStack.length > 50) {
@@ -3088,16 +3490,19 @@ function undoRoster() {
   // 備份當前狀態到 redoStack
   const currentRoster = JSON.parse(JSON.stringify(state.roster));
   const currentEdits = JSON.parse(JSON.stringify(state.manualEdits || {}));
-  redoStack.push({ roster: currentRoster, manualEdits: currentEdits });
+  const currentDuty = JSON.parse(JSON.stringify(state.dutyRoster || {}));
+  redoStack.push({ roster: currentRoster, manualEdits: currentEdits, dutyRoster: currentDuty });
   
   // 載入上一步
   const popped = undoStack.pop();
   if (popped && popped.roster) {
     state.roster = popped.roster;
     state.manualEdits = popped.manualEdits || {};
+    state.dutyRoster = popped.dutyRoster || {};
   } else {
     state.roster = popped || {};
     state.manualEdits = {};
+    state.dutyRoster = {};
   }
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
@@ -3110,16 +3515,19 @@ function redoRoster() {
   // 備份當前狀態到 undoStack
   const currentRoster = JSON.parse(JSON.stringify(state.roster));
   const currentEdits = JSON.parse(JSON.stringify(state.manualEdits || {}));
-  undoStack.push({ roster: currentRoster, manualEdits: currentEdits });
+  const currentDuty = JSON.parse(JSON.stringify(state.dutyRoster || {}));
+  undoStack.push({ roster: currentRoster, manualEdits: currentEdits, dutyRoster: currentDuty });
   
   // 載入下一步
   const popped = redoStack.pop();
   if (popped && popped.roster) {
     state.roster = popped.roster;
     state.manualEdits = popped.manualEdits || {};
+    state.dutyRoster = popped.dutyRoster || {};
   } else {
     state.roster = popped || {};
     state.manualEdits = {};
+    state.dutyRoster = {};
   }
   state.hasUnsavedChanges = true;
   updateUnsavedChangesUI();
@@ -3193,6 +3601,35 @@ document.addEventListener('DOMContentLoaded', () => {
     rebuildSortedStaffIds();
     renderAll();
   });
+
+  // 階段切換按鈕事件監聽與初始化
+  const btnStage1 = document.getElementById('btn-stage-1');
+  const btnStage2 = document.getElementById('btn-stage-2');
+  if (btnStage1 && btnStage2) {
+    if (state.currentStage === 2) {
+      btnStage2.classList.add('active');
+      btnStage1.classList.remove('active');
+    } else {
+      btnStage1.classList.add('active');
+      btnStage2.classList.remove('active');
+    }
+
+    btnStage1.addEventListener('click', () => {
+      state.currentStage = 1;
+      btnStage1.classList.add('active');
+      btnStage2.classList.remove('active');
+      saveToLocalStorage();
+      renderAll();
+    });
+
+    btnStage2.addEventListener('click', () => {
+      state.currentStage = 2;
+      btnStage2.classList.add('active');
+      btnStage1.classList.remove('active');
+      saveToLocalStorage();
+      renderAll();
+    });
+  }
 
   // 3. 側邊欄 Tab 切換事件
   document.querySelectorAll('.sidebar-tab').forEach(tab => {
