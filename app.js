@@ -3450,7 +3450,7 @@ function exportRosterToExcel(targetStage = 1) {
   html += `    <th rowspan="2" class="hdr" style="width:110px;">${state.currentYear}</th>\n`;
   html += `    <th class="hdr" style="width:90px;">${MONTH_FULL}</th>\n`;
   html += `    <th class="hdr" style="width:35px;">假</th>\n`;
-  html += `    <th rowspan="2" class="hdr" style="width:50px;">餐</th>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:80px;">餐</th>\n`;
   html += `    <th rowspan="2" class="hdr" style="width:44px;">工作日</th>\n`;
   html += `    <th rowspan="2" class="hdr" style="width:44px;">OFF</th>\n`;
   html += `    <th rowspan="2" class="hdr" style="width:44px;">PTO</th>\n`;
@@ -3459,7 +3459,7 @@ function exportRosterToExcel(targetStage = 1) {
   for (let d = 1; d <= daysCount; d++) {
     const dow = getDayOfWeek(state.currentYear, state.currentMonth, d);
     const cs  = dow === 0 ? ' color:#FF0000;' : (dow === 6 ? ' color:#0070C0;' : '');
-    html += `    <th class="hdr" style="width:70px;${cs}">${weekdaysEng[dow]}</th>\n`;
+    html += `    <th class="hdr" style="width:95px;${cs}">${weekdaysEng[dow]}</th>\n`;
   }
   html += `  </tr>\n`;
 
@@ -3500,7 +3500,7 @@ function exportRosterToExcel(targetStage = 1) {
     html += `    <td rowspan="2" style="background-color:${gc};font-weight:bold;">${emp.name}</td>\n`;
     html += `    <td rowspan="2" style="background-color:${gc};">${shiftHrs}</td>\n`;
     html += `    <td rowspan="2" style="background-color:${gc};">${offDayStr}</td>\n`;
-    html += `    <td rowspan="2" style="background-color:${gc};">${lunchTime}</td>\n`;
+    html += `    <td rowspan="2" style="background-color:${gc};mso-number-format:'\\@';">${lunchTime}</td>\n`;
     html += `    <td style="background-color:${gc};font-weight:bold;">${workCount}</td>\n`;
     html += `    <td style="background-color:${gc};font-weight:bold;">${offCount}</td>\n`;
     html += `    <td style="background-color:${gc};font-weight:bold;">${ptoTotal > 0 ? ptoTotal : 0}</td>\n`;
