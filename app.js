@@ -3458,7 +3458,7 @@ function exportRosterToExcel(targetStage = 1) {
   html += `    <th rowspan="2" class="hdr" style="width:44px;">LOA</th>\n`;
   for (let d = 1; d <= daysCount; d++) {
     const dow = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const cs  = dow === 0 ? ' color:#FF0000;' : (dow === 6 ? ' color:#0070C0;' : '');
+    const cs  = (dow === 0 || dow === 6) ? ' color:#FF0000;' : '';
     html += `    <th class="hdr" style="width:80px;${cs}">${weekdaysEng[dow]}</th>\n`;
   }
   html += `  </tr>\n`;
@@ -3469,7 +3469,7 @@ function exportRosterToExcel(targetStage = 1) {
   html += `    <th class="hdr">${standardOff}</th>\n`;
   for (let d = 1; d <= daysCount; d++) {
     const dow = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const cs  = dow === 0 ? ' color:#FF0000;' : (dow === 6 ? ' color:#0070C0;' : '');
+    const cs  = (dow === 0 || dow === 6) ? ' color:#FF0000;' : '';
     html += `    <th class="hdr" style="${cs}">${d}-${MONTH_ABBR}</th>\n`;
   }
   html += `  </tr>\n`;
