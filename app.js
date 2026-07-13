@@ -564,6 +564,16 @@ function auditRoster(year, month) {
           message: `${employee.name} 於本日已設定為公假，卻被指派了「${shiftMap.get(shiftId)?.name || shiftId}」，請改為公假！`
         });
       }
+      if ((employee.loa || []).includes(dateStr) && !leaveTypes.includes(shiftId)) {
+        warnings.push({
+          type: 'loa_conflict',
+          severity: 'error',
+          employeeId: employee.id,
+          employeeName: employee.name,
+          date: dateStr,
+          message: `${employee.name} 於本日已設定為體檢，卻被指派了「${shiftMap.get(shiftId)?.name || shiftId}」，請改為體檢！`
+        });
+      }
       if ((employee.forcedOff || []).includes(dateStr) && !leaveTypes.includes(shiftId)) {
         warnings.push({
           type: 'foff_conflict',
@@ -784,6 +794,7 @@ function runAutoScheduler() {
     const ptoSet = new Set(emp.pto || []);
     const pubSet = new Set(emp.pub || []);
     const forcedOffSet = new Set(emp.forcedOff || []);
+    const loaSet = new Set(emp.loa || []);
     
     // 1. 初始化該專員在當月的初始狀態
     const empRoster = {}; // dateStr -> shiftId
@@ -806,6 +817,8 @@ function runAutoScheduler() {
       } else if (forcedOffSet.has(dateStr)) {
         empRoster[dateStr] = 'FOFF';
         offDates.push(dateStr);
+      } else if (loaSet.has(dateStr)) {
+        empRoster[dateStr] = 'LOA';
       } else if (pubSet.has(dateStr)) {
         empRoster[dateStr] = 'PUB';
       } else if (isDefaultOff) {
@@ -2528,6 +2541,7 @@ let activeConfigEmpId = null;
 let tempPtoDays = []; // 暫存特休 YYYY-MM-DD
 let tempPubDays = []; // 暫存公假 YYYY-MM-DD
 let tempForcedOffDays = []; // 暫存預排強迫 OFF YYYY-MM-DD
+let tempLoaDays = []; // 暫存 LOA YYYY-MM-DD
 let tempDefaultOffDays = []; // 暫存休假預設天數 [0-6]
 
 function openEmployeeConfigModal(empId) {
@@ -2541,6 +2555,7 @@ function openEmployeeConfigModal(empId) {
   tempPtoDays = [...emp.pto];
   tempPubDays = [...(emp.pub || [])];
   tempForcedOffDays = [...(emp.forcedOff || [])];
+  tempLoaDays = [...(emp.loa || [])];
   tempDefaultOffDays = [...(emp.defaultOffDays || [])];
 
   // 1. 渲染 PTO 小型日曆
@@ -2587,6 +2602,7 @@ function renderModalPtoCalendar(emp) {
     const isPto = tempPtoDays.includes(dateStr);
     const isPub = tempPubDays.includes(dateStr);
     const isForcedOff = tempForcedOffDays.includes(dateStr);
+    const isLoa = tempLoaDays.includes(dateStr);
 
     let label = '';
     let cellClass = 'modal-cal-day';
@@ -2603,6 +2619,9 @@ function renderModalPtoCalendar(emp) {
     } else if (isForcedOff) {
       label = '強制OFF';
       cellClass += ' forced-off-active';
+    } else if (isLoa) {
+      label = 'LOA';
+      cellClass += ' loa-active';
     } else if (isPub) {
       label = '公假';
       cellClass += ' pub-active';
@@ -2623,7 +2642,7 @@ function renderModalPtoCalendar(emp) {
       ${label ? `<span class="modal-cal-day-badge">${label}</span>` : ''}
     `;
 
-    // 左鍵循環切換：無 → 指定休(OFF/特休) → 強制OFF → 公假 → 無
+    // 左鍵循環切換：無 → 指定休(OFF/特休) → 強制OFF → LOA → 公假 → 無
     dayCell.addEventListener('click', function() {
       const targetDate = this.dataset.date;
       if (tempPtoDays.includes(targetDate)) {
@@ -2631,8 +2650,12 @@ function renderModalPtoCalendar(emp) {
         tempPtoDays = tempPtoDays.filter(x => x !== targetDate);
         tempForcedOffDays.push(targetDate);
       } else if (tempForcedOffDays.includes(targetDate)) {
-        // 強制OFF → 公假
+        // 強制OFF → LOA
         tempForcedOffDays = tempForcedOffDays.filter(x => x !== targetDate);
+        tempLoaDays.push(targetDate);
+      } else if (tempLoaDays.includes(targetDate)) {
+        // LOA → 公假
+        tempLoaDays = tempLoaDays.filter(x => x !== targetDate);
         tempPubDays.push(targetDate);
       } else if (tempPubDays.includes(targetDate)) {
         // 公假 → 無
@@ -2739,15 +2762,17 @@ function saveEmployeeConfig() {
   const empIndex = state.staff.findIndex(e => e.id === activeConfigEmpId);
   if (empIndex === -1) return;
 
-  // 取得舊的 pto 列表、pub 列表、forcedOff 列表以便比對哪些被移除了
+  // 取得舊的 pto 列表、pub 列表、forcedOff 列表、loa 列表以便比對哪些被移除了
   const oldPto = state.staff[empIndex].pto || [];
   const oldPub = state.staff[empIndex].pub || [];
   const oldForcedOff = state.staff[empIndex].forcedOff || [];
+  const oldLoa = state.staff[empIndex].loa || [];
 
   // 套用暫存與輸入變數
   state.staff[empIndex].pto = tempPtoDays;
   state.staff[empIndex].pub = tempPubDays;
   state.staff[empIndex].forcedOff = tempForcedOffDays;
+  state.staff[empIndex].loa = tempLoaDays;
   state.staff[empIndex].defaultOffDays = tempDefaultOffDays;
   state.staff[empIndex].defaultWorkShift = document.getElementById('input-emp-default-shift').value || 'A';
 
@@ -2759,6 +2784,7 @@ function saveEmployeeConfig() {
       const isPto = tempPtoDays.includes(dateStr);
       const isPub = tempPubDays.includes(dateStr);
       const isForcedOff = tempForcedOffDays.includes(dateStr);
+      const isLoa = tempLoaDays.includes(dateStr);
       if (isPto) {
         // 被選中：依據新規則設定為 OFF 或 PTO
         const leaveType = getLeaveTypeForPtoDay(state.staff[empIndex], dateStr, tempPtoDays);
@@ -2766,12 +2792,15 @@ function saveEmployeeConfig() {
       } else if (isForcedOff) {
         // 被選中為強制OFF
         state.roster[dateStr][activeConfigEmpId] = 'FOFF';
+      } else if (isLoa) {
+        // 被選中為LOA
+        state.roster[dateStr][activeConfigEmpId] = 'LOA';
       } else if (isPub) {
         // 被選中為公假
         state.roster[dateStr][activeConfigEmpId] = 'PUB';
       } else {
-        // 未被選中：如果以前是選中的指定休假日、公假或強制OFF，現在被取消了，改回預設班別 (若是固定休假日則改回 OFF)
-        if (oldPto.includes(dateStr) || oldPub.includes(dateStr) || oldForcedOff.includes(dateStr)) {
+        // 未被選中：如果以前是選中的指定休假日、公假、強制OFF或LOA，現在被取消了，改回預設班別 (若是固定休假日則改回 OFF)
+        if (oldPto.includes(dateStr) || oldPub.includes(dateStr) || oldForcedOff.includes(dateStr) || oldLoa.includes(dateStr)) {
           const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
           const isDefaultOff = tempDefaultOffDays.includes(dayOfWeek);
           state.roster[dateStr][activeConfigEmpId] = isDefaultOff ? 'OFF' : (state.staff[empIndex].defaultWorkShift || 'A');

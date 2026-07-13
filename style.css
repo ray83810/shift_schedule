@@ -1592,6 +1592,13 @@ h1, h2, h3, h4 {
   box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
 }
 
+.modal-cal-day.loa-active {
+  background: var(--shift-loa-bg) !important;
+  color: var(--shift-loa-text) !important;
+  border-color: var(--shift-loa-border) !important;
+  box-shadow: 0 0 6px var(--shift-loa-border);
+}
+
 .modal-cal-day-badge {
   font-size: 0.55rem;
   padding: 1px 4px;
@@ -1616,9 +1623,14 @@ h1, h2, h3, h4 {
   color: #fbbf24;
 }
 
+.loa-active .modal-cal-day-badge {
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--shift-loa-text);
+}
+
 .pub-active .modal-cal-day-badge {
   background: rgba(6, 182, 212, 0.2);
-  color: #22d3ee;
+  color: var(--shift-pub-text);
 }
 
 .pto-default-off .modal-cal-day-badge {
