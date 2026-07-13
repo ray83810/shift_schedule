@@ -1612,76 +1612,78 @@ function renderRosterGrid() {
   });
 
   // --- 3. 產生「每日可額外休假 (PTO) 額度」列 ---
-  const ptoRow = document.createElement('tr');
-  ptoRow.className = 'roster-extra-pto-row';
-  
-  // 欄位名稱
-  const tdPtoTitle = document.createElement('td');
-  tdPtoTitle.className = 'col-staff-name';
-  tdPtoTitle.style.background = 'linear-gradient(rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.08)), var(--bg-secondary)';
-  tdPtoTitle.style.borderTop = '2px solid var(--accent-green)';
-  tdPtoTitle.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 8px;">
-      <span style="font-size: 1.2rem;">🌴</span>
-      <div>
-        <span class="staff-name" style="color: var(--accent-green); font-weight: 700;">可再休 PTO</span>
-        <div class="staff-desc" style="color: var(--text-secondary);">當日剩餘休假額度</div>
-      </div>
-    </div>
-  `;
-  ptoRow.appendChild(tdPtoTitle);
-
-  // 產生 1 到 N 號的額度單元格
-  for (let d = 1; d <= daysCount; d++) {
-    const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-    const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+  if (state.currentStage === 1) {
+    const ptoRow = document.createElement('tr');
+    ptoRow.className = 'roster-extra-pto-row';
     
-    const tdPtoCell = document.createElement('td');
-    tdPtoCell.className = 'roster-cell';
-    tdPtoCell.style.borderTop = '2px solid var(--accent-green)';
-    tdPtoCell.style.background = 'rgba(16, 185, 129, 0.04)';
-    if (isWeekend) tdPtoCell.classList.add('date-weekend');
-
-    // 計算當日最低人力需求 (所有班次的目標之和)
-    let minRequired = 0;
-    shiftList.forEach(s => {
-      const targetConfig = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
-      minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
-    });
-
-    // 計算當日已排班人數 (非 OFF/PTO/LOA，且排除獨立班D)
-    let activeWorking = 0;
-    staffList.forEach(emp => {
-      if (emp.defaultWorkShift === 'D') return;
-      const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'FOFF') {
-        if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
-          activeWorking += 0.5;
-        } else {
-          activeWorking++;
-        }
-      }
-    });
-
-    // 額外可休額度 = 已排班人數 - 最低人力需求
-    const extraPtoAvailable = Math.max(0, activeWorking - minRequired);
-
-    let quotaBadgeClass = 'shift-OFF';
-    let quotaLabel = '0';
-    if (extraPtoAvailable > 0) {
-      quotaBadgeClass = 'shift-A'; // 綠色樣式
-      quotaLabel = `+${extraPtoAvailable}`;
-    }
-
-    tdPtoCell.innerHTML = `
-      <div class="roster-cell-inner" style="cursor: default;" title="當日已排上班人數: ${activeWorking}人, 最低需求: ${minRequired}人. 可再准假 ${extraPtoAvailable}人。">
-        <span class="shift-badge ${quotaBadgeClass}" style="border-radius: 50%; font-size: 0.8rem; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 6px rgba(16,185,129,0.2);">${quotaLabel}</span>
+    // 欄位名稱
+    const tdPtoTitle = document.createElement('td');
+    tdPtoTitle.className = 'col-staff-name';
+    tdPtoTitle.style.background = 'linear-gradient(rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.08)), var(--bg-secondary)';
+    tdPtoTitle.style.borderTop = '2px solid var(--accent-green)';
+    tdPtoTitle.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 1.2rem;">🌴</span>
+        <div>
+          <span class="staff-name" style="color: var(--accent-green); font-weight: 700;">可再休 PTO</span>
+          <div class="staff-desc" style="color: var(--text-secondary);">當日剩餘休假額度</div>
+        </div>
       </div>
     `;
-    ptoRow.appendChild(tdPtoCell);
+    ptoRow.appendChild(tdPtoTitle);
+
+    // 產生 1 到 N 號的額度單元格
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+      
+      const tdPtoCell = document.createElement('td');
+      tdPtoCell.className = 'roster-cell';
+      tdPtoCell.style.borderTop = '2px solid var(--accent-green)';
+      tdPtoCell.style.background = 'rgba(16, 185, 129, 0.04)';
+      if (isWeekend) tdPtoCell.classList.add('date-weekend');
+
+      // 計算當日最低人力需求 (所有班次的目標之和)
+      let minRequired = 0;
+      shiftList.forEach(s => {
+        const targetConfig = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
+        minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
+      });
+
+      // 計算當日已排班人數 (非 OFF/PTO/LOA，且排除獨立班D)
+      let activeWorking = 0;
+      staffList.forEach(emp => {
+        if (emp.defaultWorkShift === 'D') return;
+        const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+        if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'FOFF') {
+          if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+            activeWorking += 0.5;
+          } else {
+            activeWorking++;
+          }
+        }
+      });
+
+      // 額外可休額度 = 已排班人數 - 最低人力需求
+      const extraPtoAvailable = Math.max(0, activeWorking - minRequired);
+
+      let quotaBadgeClass = 'shift-OFF';
+      let quotaLabel = '0';
+      if (extraPtoAvailable > 0) {
+        quotaBadgeClass = 'shift-A'; // 綠色樣式
+        quotaLabel = `+${extraPtoAvailable}`;
+      }
+
+      tdPtoCell.innerHTML = `
+        <div class="roster-cell-inner" style="cursor: default;" title="當日已排上班人數: ${activeWorking}人, 最低需求: ${minRequired}人. 可再准假 ${extraPtoAvailable}人。">
+          <span class="shift-badge ${quotaBadgeClass}" style="border-radius: 50%; font-size: 0.8rem; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 6px rgba(16,185,129,0.2);">${quotaLabel}</span>
+        </div>
+      `;
+      ptoRow.appendChild(tdPtoCell);
+    }
+    grid.appendChild(ptoRow);
   }
-  grid.appendChild(ptoRow);
 
   if (state.currentStage === 2) {
     // --- 4. 產生早班值日列 ---
@@ -2759,7 +2761,7 @@ function closeEmployeeConfigModal() {
 // 10. 匯出功能 (CSV & JSON & Print Layout PDF)
 
 // A. 匯出 CSV 班表 (針對 Excel 支援，強制加入 UTF-8 BOM \ufeff 避免亂碼)
-function exportRosterToCSV() {
+function exportRosterToCSV(targetStage = 1) {
   const daysCount = getDaysInMonth(state.currentYear, state.currentMonth);
   const staffList = state.staff;
   const shiftList = state.shifts;
@@ -2793,43 +2795,45 @@ function exportRosterToCSV() {
     csvContent += row.join(',') + '\n';
   });
 
-  // 3. 寫入每日可額外休假 (PTO) 額度列
-  const ptoRow = ['可再休 PTO'];
-  for (let d = 1; d <= daysCount; d++) {
-    const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-    const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+  // 3. 寫入每日可額外休假 (PTO) 額度列 (第一階段)
+  if (targetStage === 1) {
+    const ptoRow = ['可再休 PTO'];
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
 
-    // 計算當日最低人力需求 (所有班次的目標之和)
-    let minRequired = 0;
-    shiftList.forEach(s => {
-      const targetConfig = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
-      minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
-    });
+      // 計算當日最低人力需求 (所有班次的目標之和)
+      let minRequired = 0;
+      shiftList.forEach(s => {
+        const targetConfig = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
+        minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
+      });
 
-    // 計算當日已排班人數 (非 OFF/PTO/LOA，且排除獨立班D)
-    let activeWorking = 0;
-    staffList.forEach(emp => {
-      if (emp.defaultWorkShift === 'D') return;
-      const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'FOFF') {
-        if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
-          activeWorking += 0.5;
-        } else {
-          activeWorking++;
+      // 計算當日已排班人數 (非 OFF/PTO/LOA，且排除獨立班D)
+      let activeWorking = 0;
+      staffList.forEach(emp => {
+        if (emp.defaultWorkShift === 'D') return;
+        const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+        if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'FOFF') {
+          if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+            activeWorking += 0.5;
+          } else {
+            activeWorking++;
+          }
         }
-      }
-    });
+      });
 
-    // 額外可休額度 = 已排班人數 - 最低人力需求
-    const extraPtoAvailable = Math.max(0, activeWorking - minRequired);
-    const quotaLabel = extraPtoAvailable > 0 ? `+${extraPtoAvailable}` : '0';
-    ptoRow.push(quotaLabel);
+      // 額外可休額度 = 已排班人數 - 最低人力需求
+      const extraPtoAvailable = Math.max(0, activeWorking - minRequired);
+      const quotaLabel = extraPtoAvailable > 0 ? `+${extraPtoAvailable}` : '0';
+      ptoRow.push(quotaLabel);
+    }
+    csvContent += ptoRow.join(',') + '\n';
   }
-  csvContent += ptoRow.join(',') + '\n';
 
-  // 3.5 寫入值日生列
-  if (state.dutyRoster) {
+  // 3.5 寫入值日生列 (第二階段)
+  if (targetStage === 2 && state.dutyRoster) {
     const earlyDutyRow = ['早班值日'];
     const lateDutyRow = ['晚班值日'];
     
@@ -2853,14 +2857,13 @@ function exportRosterToCSV() {
     csvContent += lateDutyRow.join(',') + '\n';
   }
 
-
   try {
     // 4. 下載觸發
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Asurion客服排班表_${state.currentYear}年_${state.currentMonth + 1}月.csv`);
+    link.setAttribute('download', `Asurion客服排班表_${state.currentYear}年_${state.currentMonth + 1}月_第${targetStage}階段.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3171,7 +3174,7 @@ async function syncRosterFromCloud(isSilent = false) {
 
 
 // A.2 匯出 Excel 班表 (輸出為相容 Excel 的 HTML 格式以支援背景顏色、合併儲存格與字型樣式)
-function exportRosterToExcel() {
+function exportRosterToExcel(targetStage = 1) {
   const daysCount = getDaysInMonth(state.currentYear, state.currentMonth);
   const staffList = state.staff;
   const shiftList = state.shifts;
@@ -3273,6 +3276,7 @@ function exportRosterToExcel() {
       <th rowspan="2" class="header-cell" style="width: 60px;">PTO</th>
       <th rowspan="2" class="header-cell" style="width: 70px;">PTO-AL</th>
       <th rowspan="2" class="header-cell" style="width: 60px;">LOA</th>
+      <th rowspan="2" class="header-cell" style="width: 60px;">公假</th>
   `;
 
   // 填充表頭第一列的星期
@@ -3402,7 +3406,7 @@ function exportRosterToExcel() {
   html += `    </tr>\n`;
 
   // 5. 寫入值日生列 (Excel 格式)
-  if (state.dutyRoster) {
+  if (targetStage === 2 && state.dutyRoster) {
     // 早班值日 row
     html += `    <tr>
       <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px; background-color: #E6F0FA;">早班值日 (12:00-17:00)</td>
@@ -3477,7 +3481,7 @@ function exportRosterToExcel() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Asurion客服班表_${state.currentYear}年_${state.currentMonth + 1}月.xls`);
+    link.setAttribute('download', `Asurion客服班表_${state.currentYear}年_${state.currentMonth + 1}月_第${targetStage}階段.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -3754,12 +3758,39 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-close-export-modal').addEventListener('click', closeExportModal);
   document.getElementById('btn-export-close').addEventListener('click', closeExportModal);
 
-  // 10. 匯出班表事件 (直接由按鈕匯出 Excel)
+  // 10. 匯出班表事件 (顯示階段選擇彈窗)
   const exportBtn = document.getElementById('btn-export-roster');
+  const chooseModal = document.getElementById('modal-export-choose');
+  const btnCloseChoose = document.getElementById('btn-close-export-choose-modal');
+  const btnExport1 = document.getElementById('btn-export-stage-1');
+  const btnExport2 = document.getElementById('btn-export-stage-2');
+
+  const closeChooseModal = () => {
+    if (chooseModal) chooseModal.classList.add('display-none');
+  };
+
   if (exportBtn) {
     exportBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      exportRosterToExcel();
+      if (chooseModal) chooseModal.classList.remove('display-none');
+    });
+  }
+
+  if (btnCloseChoose) {
+    btnCloseChoose.addEventListener('click', closeChooseModal);
+  }
+
+  if (btnExport1) {
+    btnExport1.addEventListener('click', () => {
+      exportRosterToExcel(1);
+      closeChooseModal();
+    });
+  }
+
+  if (btnExport2) {
+    btnExport2.addEventListener('click', () => {
+      exportRosterToExcel(2);
+      closeChooseModal();
     });
   }
 
