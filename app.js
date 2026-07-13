@@ -3383,39 +3383,41 @@ function exportRosterToExcel(targetStage = 1) {
     html += `    </tr>\n`;
   });
 
-  // 4. 寫入每日可額外休假 (PTO) 額度列
-  html += `    <tr>
-      <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px;">可再休 PTO</td>
-  `;
-  for (let d = 1; d <= daysCount; d++) {
-    const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-    const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+  // 4. 寫入每日可額外休假 (PTO) 額度列 (第一階段)
+  if (targetStage === 1) {
+    html += `    <tr>
+        <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px;">可再休 PTO</td>
+    `;
+    for (let d = 1; d <= daysCount; d++) {
+      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
 
-    let minRequired = 0;
-    shiftList.forEach(s => {
-      const targetConfig = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
-      minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
-    });
+      let minRequired = 0;
+      shiftList.forEach(s => {
+        const targetConfig = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
+        minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
+      });
 
-    let activeWorking = 0;
-    staffList.forEach(emp => {
-      if (emp.defaultWorkShift === 'D') return;
-      const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'FOFF') {
-        if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
-          activeWorking += 0.5;
-        } else {
-          activeWorking++;
+      let activeWorking = 0;
+      staffList.forEach(emp => {
+        if (emp.defaultWorkShift === 'D') return;
+        const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
+        if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'FOFF') {
+          if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
+            activeWorking += 0.5;
+          } else {
+            activeWorking++;
+          }
         }
-      }
-    });
+      });
 
-    const extraPtoAvailable = Math.max(0, activeWorking - minRequired);
-    const quotaLabel = extraPtoAvailable > 0 ? `+${extraPtoAvailable}` : '0';
-    html += `      <td class="header-cell" style="font-weight: bold;">${quotaLabel}</td>\n`;
+      const extraPtoAvailable = Math.max(0, activeWorking - minRequired);
+      const quotaLabel = extraPtoAvailable > 0 ? `+${extraPtoAvailable}` : '0';
+      html += `      <td class="header-cell" style="font-weight: bold;">${quotaLabel}</td>\n`;
+    }
+    html += `    </tr>\n`;
   }
-  html += `    </tr>\n`;
 
   // 5. 寫入值日生列 (Excel 格式)
   if (targetStage === 2 && state.dutyRoster) {
