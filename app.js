@@ -147,7 +147,7 @@ function initializeAugust2026Preset(rosterObj, staffList) {
     'OFF', 'OFF', 'C', 'C', 'PTO', 'C', 'C', 'OFF', 'OFF', 'C', 'C'
   ];
   const amberShifts = [
-    'B', 'OFF', 'LOA', 'B', 'B', 'B', 'B', 'B', 'B', 'OFF',
+    'B', 'OFF', 'LOA', 'B', 'B', 'B', 'B', 'B', 'OFF', 'OFF',
     'B', 'B', 'B', 'B', 'B', 'OFF', 'OFF', 'B', 'B', 'B',
     'B', 'B', 'OFF', 'OFF', 'B', 'B', 'B', 'B', 'B', 'OFF', 'B'
   ];
