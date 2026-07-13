@@ -263,6 +263,19 @@ function initDatabase() {
       const hasAugustRoster = Object.keys(state.roster).some(dateStr => dateStr.startsWith('2026-08'));
       if (!hasAugustRoster) {
         initializeAugust2026Preset(state.roster, state.staff);
+      } else {
+        // 修正快取中的舊資料 (若 2026-08-09 的 Amber 還是 B，強制修正為 OFF)
+        if (state.roster['2026-08-09'] && state.roster['2026-08-09']['staff_3'] === 'B') {
+          state.roster['2026-08-09']['staff_3'] = 'OFF';
+          const amber = state.staff.find(e => e.id === 'staff_3');
+          if (amber) {
+            amber.pto = (amber.pto || []).filter(d => d !== '2026-08-09');
+            amber.pub = (amber.pub || []).filter(d => d !== '2026-08-09');
+            amber.loa = (amber.loa || []).filter(d => d !== '2026-08-09');
+            amber.forcedOff = (amber.forcedOff || []).filter(d => d !== '2026-08-09');
+          }
+          saveToLocalStorage();
+        }
       }
       state.dutyRoster = parsed.dutyRoster || {};
       state.currentStage = parsed.currentStage || 1;
