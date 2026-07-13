@@ -120,6 +120,99 @@ const DEFAULT_COVERAGE = {
 };
 
 // 3. 初始化儲存與加載 (Storage Utils)
+function initializeAugust2026Preset(rosterObj, staffList) {
+  const sherryShifts = [
+    'A', 'OFF', 'A', 'A', 'A', 'OFF', 'OFF', 'A', 'A', 'OFF',
+    'A', 'OFF', 'OFF', 'A', 'A', 'OFF', 'A', 'A', 'OFF', 'OFF',
+    'A', 'A', 'OFF', 'A', 'A', 'A', 'A', 'A', 'OFF', 'OFF', 'A'
+  ];
+  const alexShifts = [
+    'OFF', 'A', 'A', 'A', 'LOA', 'PTO', 'OFF', 'OFF', 'A', 'A',
+    'A', 'A', 'A', 'OFF', 'OFF', 'A', 'A', 'A', 'A', 'A',
+    'OFF', 'OFF', 'A', 'A', 'A', 'A', 'A', 'OFF', 'OFF', 'A', 'A'
+  ];
+  const rexShifts = [
+    'C', 'OFF', 'OFF', 'LOA', 'C', 'C', 'C', 'PTO', 'OFF', 'OFF',
+    'C', 'C', 'C', 'C', 'C', 'OFF', 'OFF', 'C', 'C', 'C',
+    'C', 'C', 'OFF', 'OFF', 'C', 'C', 'C', 'C', 'PTO', 'OFF', 'C'
+  ];
+  const jackyShifts = [
+    'OFF', 'C', 'C', 'C', 'C', 'OFF', 'OFF', 'C', 'C', 'C',
+    'C', 'C', 'OFF', 'OFF', 'C', 'C', 'C', 'C', 'OFF', 'OFF',
+    'C', 'C', 'C', 'C', 'C', 'OFF', 'OFF', 'C', 'C', 'C', 'C'
+  ];
+  const jianShifts = [
+    'OFF', 'C', 'C', 'C', 'C', 'C', 'OFF', 'OFF', 'C', 'C',
+    'AM_PTO', 'C', 'C', 'OFF', 'OFF', 'C', 'C', 'C', 'C', 'C',
+    'OFF', 'OFF', 'C', 'C', 'PTO', 'C', 'C', 'OFF', 'OFF', 'C', 'C'
+  ];
+  const amberShifts = [
+    'B', 'OFF', 'LOA', 'B', 'B', 'B', 'B', 'B', 'B', 'OFF',
+    'B', 'B', 'B', 'B', 'B', 'OFF', 'OFF', 'B', 'B', 'B',
+    'B', 'B', 'OFF', 'OFF', 'B', 'B', 'B', 'B', 'B', 'OFF', 'B'
+  ];
+  const evanShifts = [
+    'B', 'B', 'B', 'B', 'OFF', 'B', 'B', 'B', 'B', 'B',
+    'B', 'OFF', 'OFF', 'B', 'B', 'B', 'B', 'B', 'OFF', 'OFF',
+    'B', 'B', 'B', 'B', 'B', 'B', 'OFF', 'OFF', 'B', 'B', 'B'
+  ];
+  const howardShifts = [
+    'B', 'B', 'B', 'B', 'B', 'OFF', 'OFF', 'B', 'B', 'B',
+    'B', 'B', 'B', 'OFF', 'OFF', 'B', 'B', 'B', 'B', 'B',
+    'LOA', 'OFF', 'PTO', 'PTO', 'B', 'B', 'PTO', 'PTO', 'OFF', 'OFF', 'PTO'
+  ];
+  const mollyShifts = [
+    'OFF', 'OFF', 'D', 'D', 'D', 'D', 'D', 'OFF', 'OFF', 'D',
+    'D', 'D', 'D', 'D', 'OFF', 'OFF', 'D', 'LOA', 'PTO', 'PTO',
+    'PTO', 'PTO', 'OFF', 'D', 'D', 'D', 'D', 'D', 'OFF', 'OFF', 'D'
+  ];
+
+  const presetShifts = {
+    staff_8: sherryShifts,
+    staff_1: alexShifts,
+    staff_7: rexShifts,
+    staff_4: jackyShifts,
+    staff_6: jianShifts,
+    staff_3: amberShifts,
+    staff_5: evanShifts,
+    staff_2: howardShifts,
+    staff_9: mollyShifts
+  };
+
+  // Sync state.roster and employee preference lists
+  staffList.forEach(emp => {
+    const shifts = presetShifts[emp.id];
+    if (!shifts) return;
+
+    // Filter out old August 2026 entries to avoid duplicates
+    emp.pto = (emp.pto || []).filter(d => !d.startsWith('2026-08'));
+    emp.pub = (emp.pub || []).filter(d => !d.startsWith('2026-08'));
+    emp.forcedOff = (emp.forcedOff || []).filter(d => !d.startsWith('2026-08'));
+    emp.loa = (emp.loa || []).filter(d => !d.startsWith('2026-08'));
+
+    for (let d = 1; d <= 31; d++) {
+      const dateStr = formatDateISO(2026, 7, d);
+      const shiftVal = shifts[d - 1];
+
+      if (!rosterObj[dateStr]) {
+        rosterObj[dateStr] = {};
+      }
+      rosterObj[dateStr][emp.id] = shiftVal;
+
+      // Sync user preferences
+      if (shiftVal === 'PTO' || shiftVal === 'AM_PTO' || shiftVal === 'PM_PTO') {
+        emp.pto.push(dateStr);
+      } else if (shiftVal === 'PUB') {
+        emp.pub.push(dateStr);
+      } else if (shiftVal === 'LOA') {
+        emp.loa.push(dateStr);
+      } else if (shiftVal === 'FOFF') {
+        emp.forcedOff.push(dateStr);
+      }
+    }
+  });
+}
+
 function initDatabase() {
   // 優先加載 localStorage
   const savedState = localStorage.getItem('aura_roster_state');
@@ -127,8 +220,8 @@ function initDatabase() {
     try {
       const parsed = JSON.parse(savedState);
       state.currentYear = parsed.currentYear || 2026;
-      state.currentMonth = parsed.currentMonth !== undefined ? parsed.currentMonth : 4;
-      state.daysOff = parsed.daysOff || 8;
+      state.currentMonth = parsed.currentMonth !== undefined ? parsed.currentMonth : 7; // 預設 8 月
+      state.daysOff = parsed.daysOff || 9; // 預設 9 天假
       state.monthlyDaysOff = parsed.monthlyDaysOff || {};
       state.staff = parsed.staff || [];
 
@@ -167,6 +260,10 @@ function initDatabase() {
       state.shifts = parsed.shifts || [];
       state.coverageTargets = parsed.coverageTargets || {};
       state.roster = parsed.roster || {};
+      const hasAugustRoster = Object.keys(state.roster).some(dateStr => dateStr.startsWith('2026-08'));
+      if (!hasAugustRoster) {
+        initializeAugust2026Preset(state.roster, state.staff);
+      }
       state.dutyRoster = parsed.dutyRoster || {};
       state.currentStage = parsed.currentStage || 1;
       state.theme = parsed.theme || 'dark';
@@ -199,7 +296,7 @@ function initDatabase() {
 
 function loadDefaults() {
   state.currentYear = 2026;
-  state.currentMonth = 4; // 五月
+  state.currentMonth = 7; // 八月
   state.monthlyDaysOff = {};
   updateDaysOffFromState();
   state.staff = JSON.parse(JSON.stringify(DEFAULT_STAFF));
@@ -208,6 +305,10 @@ function loadDefaults() {
   state.coverageTargets = JSON.parse(JSON.stringify(DEFAULT_COVERAGE));
   state.roster = {}; // 預設空班表
   state.dutyRoster = {}; // 預設空值日生班表
+  
+  // 載入 8 月份預設班表 preset
+  initializeAugust2026Preset(state.roster, state.staff);
+  
   state.currentStage = 1;
   state.googleWebAppUrl = 'https://script.google.com/macros/s/AKfycbzv05O95bIipY0MqRX-9gyP-VCP9GRfvAHLpSorDZNdvIGzmolQYPEvGFus7y5UDPfV/exec';
   state.backupRoster = {};
