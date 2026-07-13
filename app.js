@@ -490,6 +490,7 @@ function auditRoster(year, month) {
     const boundary = getPreviousMonthBoundaryStats(employee.id, year, month);
     let consecutiveWorkDays = boundary.consecutiveWork;
     let regularOffDays = 0;
+    let dutyCount = 0;
     let prevShiftId = boundary.lastShiftId;
 
     for (let day = 1; day <= daysCount; day++) {
@@ -574,6 +575,11 @@ function auditRoster(year, month) {
         });
       }
 
+      if (state.dutyRoster && state.dutyRoster[dateStr]) {
+        if (state.dutyRoster[dateStr].early === employee.id) dutyCount++;
+        if (state.dutyRoster[dateStr].late === employee.id) dutyCount++;
+      }
+
       prevShiftId = shiftId;
     }
 
@@ -589,6 +595,21 @@ function auditRoster(year, month) {
         message: isShort
           ? `${employee.name} 本月排定一般休假共 ${regularOffDays} 天，少於設定的固定休假天數 ${state.daysOff} 天（相差 ${diff} 天）。`
           : `${employee.name} 本月排定一般休假共 ${regularOffDays} 天，多於設定的固定休假天數 ${state.daysOff} 天（相差 ${diff} 天）。`
+      });
+    }
+
+    // 4.5 每月固定值日天數驗證 (目標為 3 天)
+    if (state.dutyRoster && dutyCount !== 3) {
+      const isShort = dutyCount < 3;
+      const diff = Math.abs(3 - dutyCount);
+      warnings.push({
+        type: isShort ? 'duty_days_short' : 'duty_days_excess',
+        severity: 'warning',
+        employeeId: employee.id,
+        employeeName: employee.name,
+        message: isShort
+          ? `${employee.name} 本月排定值日共 ${dutyCount} 天，少於設定的固定值日天數 3 天（相差 ${diff} 天）。`
+          : `${employee.name} 本月排定值日共 ${dutyCount} 天，多於設定的固定值日天數 3 天（相差 ${diff} 天）。`
       });
     }
     
