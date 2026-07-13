@@ -1879,7 +1879,6 @@ function renderRosterGrid() {
       const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
       const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
       const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-      const isMonday = (dayOfWeek === 1);
       
       const tdEarly = document.createElement('td');
       tdEarly.className = 'roster-cell';
@@ -1900,8 +1899,9 @@ function renderRosterGrid() {
         const currentEarlyVal = state.dutyRoster[dateStr].early || "";
         const currentLateVal = state.dutyRoster[dateStr].late || "";
         
-        // 週一特有 class
-        if (isMonday) {
+        // 週一與週五特有 class
+        const isSpecialDutyDay = (dayOfWeek === 1 || dayOfWeek === 5);
+        if (isSpecialDutyDay) {
           tdEarly.classList.add('duty-cell-monday');
           tdLate.classList.add('duty-cell-monday');
           if (currentEarlyVal) tdEarly.classList.add('has-value');
@@ -3573,14 +3573,11 @@ function exportRosterToExcel(targetStage = 1) {
           const duty  = state.dutyRoster[ds] || { early: '', late: '' };
           const emp   = staffList.find(e => e.id === duty[key]);
           const name  = emp ? emp.name : '';
-          const isMon = (dow === 1);
+          const isSpecialDay = (dow === 1 || dow === 5);
           let sty, lbl;
-          if (isMon && name) {
-            sty = 'background-color:#FFF9E6;font-weight:bold;color:#B7791F;';
+          if (isSpecialDay) {
+            sty = 'background-color:#FFF9E6;' + (name ? 'font-weight:bold;color:#B7791F;' : '');
             lbl = name;
-          } else if (isMon && !name) {
-            sty = 'background-color:#FFF9E6;color:#D69E2E;font-style:italic;';
-            lbl = '自願';
           } else {
             sty = 'background-color:#FFFFFF;';
             lbl = name;
