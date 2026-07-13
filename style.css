@@ -2426,12 +2426,12 @@ body.light-theme .stage-tab:hover:not(.active) {
 
 /* 值日生儲存格樣式 */
 .duty-row-early td.col-staff-name {
-  background: rgba(59, 130, 246, 0.08) !important;
+  background: linear-gradient(rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.08)), var(--bg-secondary) !important;
   border-top: 2px solid var(--accent-blue);
 }
 
 .duty-row-late td.col-staff-name {
-  background: rgba(139, 92, 246, 0.08) !important;
+  background: linear-gradient(rgba(139, 92, 246, 0.08), rgba(139, 92, 246, 0.08)), var(--bg-secondary) !important;
   border-top: 2px solid #8b5cf6;
 }
 

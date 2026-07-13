@@ -1597,7 +1597,7 @@ function renderRosterGrid() {
   // 欄位名稱
   const tdPtoTitle = document.createElement('td');
   tdPtoTitle.className = 'col-staff-name';
-  tdPtoTitle.style.background = 'rgba(16, 185, 129, 0.08)';
+  tdPtoTitle.style.background = 'linear-gradient(rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.08)), var(--bg-secondary)';
   tdPtoTitle.style.borderTop = '2px solid var(--accent-green)';
   tdPtoTitle.innerHTML = `
     <div style="display: flex; align-items: center; gap: 8px;">
