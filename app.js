@@ -1499,7 +1499,13 @@ function renderRosterGrid() {
 
   // --- 2. 產生各人員排班列 (Body Rows) ---
   // 先獲取即時合規稽核結果，用以動態畫出紅光警告
-  const currentWarnings = auditRoster(state.currentYear, state.currentMonth);
+  const dutyWarningTypes = ['duty_weekend_violation', 'duty_on_leave', 'duty_shift_mismatch', 'duty_days_short', 'duty_days_excess'];
+  let currentWarnings = auditRoster(state.currentYear, state.currentMonth);
+  if (state.currentStage === 1) {
+    currentWarnings = currentWarnings.filter(w => !dutyWarningTypes.includes(w.type));
+  } else {
+    currentWarnings = currentWarnings.filter(w => dutyWarningTypes.includes(w.type));
+  }
 
   sortedStaff.forEach(employee => {
     const row = document.createElement('tr');
@@ -2176,7 +2182,13 @@ function renderWarningsReport() {
   const list = document.getElementById('warning-list-items');
   const countSpan = document.getElementById('warning-count');
 
-  const currentWarnings = auditRoster(state.currentYear, state.currentMonth);
+  const dutyWarningTypes = ['duty_weekend_violation', 'duty_on_leave', 'duty_shift_mismatch', 'duty_days_short', 'duty_days_excess'];
+  let currentWarnings = auditRoster(state.currentYear, state.currentMonth);
+  if (state.currentStage === 1) {
+    currentWarnings = currentWarnings.filter(w => !dutyWarningTypes.includes(w.type));
+  } else {
+    currentWarnings = currentWarnings.filter(w => dutyWarningTypes.includes(w.type));
+  }
   
   if (currentWarnings.length === 0) {
     panel.classList.add('display-none');
