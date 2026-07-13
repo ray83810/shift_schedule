@@ -3433,6 +3433,7 @@ function exportRosterToExcel(targetStage = 1) {
   table { border-collapse: collapse; font-family: "Microsoft JhengHei", Calibri, Arial, sans-serif; }
   td, th {
     border: 1px solid #7F7F7F;
+    mso-border-alt: solid #7F7F7F .5pt;
     text-align: center;
     font-size: 9pt;
     height: 20px;
@@ -3442,7 +3443,7 @@ function exportRosterToExcel(targetStage = 1) {
   .hdr { background-color: ${HEADER_BG}; font-weight: bold; }
 </style>
 </head>
-<body><table>
+<body><table border="1" cellspacing="0" style="border-collapse:collapse;">
 `;
 
   // ── 表頭 Row 1：年份(rowspan2) | 月份 | 假 | 餐(rowspan2) | 工作日(rowspan2) | OFF(rowspan2) | PTO(rowspan2) | PTO-AL(rowspan2) | LOA(rowspan2) | 星期...
