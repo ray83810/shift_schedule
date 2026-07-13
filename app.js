@@ -3355,309 +3355,247 @@ function exportRosterToExcel(targetStage = 1) {
   const daysCount = getDaysInMonth(state.currentYear, state.currentMonth);
   const staffList = state.staff;
   const shiftList = state.shifts;
-  
   const sortedStaff = getSortedStaffForOverview(staffList);
 
-  const monthEng = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][state.currentMonth];
-  const standardOff = state.daysOff;
+  const MONTH_FULL  = ['January','February','March','April','May','June',
+                        'July','August','September','October','November','December'][state.currentMonth];
+  const MONTH_ABBR  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][state.currentMonth];
+  const standardOff  = state.daysOff;
   const standardWork = daysCount - standardOff;
+  const weekdayMap  = ['日','一','二','三','四','五','六'];
+  const weekdaysEng = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-  // 輔助函數：取得員工輪流的用餐時間 (依班別順序交錯)
+  // ── 顏色定義（完全複製自 202607v2 工作表）──
+  const GROUP_COLORS = {
+    A: '#8EA9DB',   // 早班 - 藍色系
+    B: '#C6E0B4',   // 中班 - 綠色系
+    C: '#FF99CC',   // 晚班 - 粉紅色系
+    D: '#A2CD85',   // 獨立班 - 深綠色系
+  };
+  const HEADER_BG = '#EAEAEA';  // 表頭底色
+  const OFF_BG    = '#FFF2CC';  // OFF 儲存格
+  const PTO_BG    = '#FCE4D6';  // PTO 儲存格
+  const LOA_BG    = '#E2E8F0';  // LOA 儲存格
+  const PUB_BG    = '#E0F7FA';  // 公假 儲存格
+
+  // 輔助：員工輪流用餐時間
   function getEmployeeLunchTime(emp, sortedList) {
-    const sameShiftStaff = sortedList.filter(e => e.defaultWorkShift === emp.defaultWorkShift);
-    const idx = sameShiftStaff.findIndex(e => e.id === emp.id);
-    const shiftId = emp.defaultWorkShift || 'A';
-    
-    const lunchTimes = {
-      A: ['12:00', '11:00', '11:30', '12:30'],
-      B: ['15:00', '16:00', '15:30', '16:30'],
-      C: ['18:00', '19:00', '18:30', '17:30'],
-      D: ['17:00', '16:00', '16:30', '17:30']
+    const sameShift = sortedList.filter(e => e.defaultWorkShift === emp.defaultWorkShift);
+    const idx = sameShift.findIndex(e => e.id === emp.id);
+    const sid = emp.defaultWorkShift || 'A';
+    const map = {
+      A: ['12:00','11:00','11:30','12:30'],
+      B: ['15:00','16:00','15:30','16:30'],
+      C: ['18:00','19:00','18:30','17:30'],
+      D: ['17:00','16:00','16:30','17:30'],
     };
-    
-    const list = lunchTimes[shiftId] || lunchTimes['A'];
+    const list = map[sid] || map['A'];
     return list[idx % list.length];
   }
 
-  // 輔助函數：取得班別儲存格樣式
-  function getShiftCellStyle(shiftId) {
-    if (shiftId === 'OFF' || shiftId === 'FOFF') {
-      return { bg: '#FFF2CC', text: '#000000', label: 'OFF' };
-    }
-    if (shiftId === 'PTO') {
-      return { bg: '#FCE4D6', text: '#FF0000', label: 'PTO' };
-    }
-    if (shiftId === 'LOA') {
-      return { bg: '#E2E8F0', text: '#000000', label: 'LOA' };
-    }
-    if (shiftId === 'PUB') {
-      return { bg: '#E0F7FA', text: '#00838f', label: '公' };
-    }
-    if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
-      return { bg: '#FFF2CC', text: '#FF0000', label: 'PTO-Half' };
-    }
-    
-    const matchedShift = shiftList.find(s => s.id === shiftId);
-    const label = matchedShift ? matchedShift.start : shiftId;
-    
-    if (shiftId === 'A') return { bg: '#D9E1F2', text: '#000000', label };
-    if (shiftId === 'B') return { bg: '#E2EFDA', text: '#000000', label };
-    if (shiftId === 'C') return { bg: '#F2DBDB', text: '#000000', label };
-    if (shiftId === 'D') return { bg: '#FDE9D9', text: '#000000', label };
-    
-    return { bg: '#FDE9D9', text: '#000000', label };
-  }
-
-  const groupColors = { A: '#B4C6E7', B: '#C6E0B4', C: '#F2DBDB', D: '#F8CBAD' };
-  const weekdaysEng = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const weekdayMap = ['日', '一', '二', '三', '四', '五', '六'];
-
-  // 開始組裝 Excel HTML Table 内容
-  let html = `
-<html xmlns:o="urn:schemas-microsoft-excel:office:office" xmlns:x="urn:schemas-microsoft-excel:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<!--[if gte mso 9]>
-<xml>
-  <x:ExcelWorkbook>
-    <x:ExcelWorksheets>
-      <x:ExcelWorksheet>
-        <x:Name>客服班表</x:Name>
-        <x:WorksheetOptions>
-          <x:DisplayGridlines/>
-        </x:WorksheetOptions>
-      </x:ExcelWorksheet>
-    </x:ExcelWorksheets>
-  </x:ExcelWorkbook>
-</xml>
-<![endif]-->
-<style>
-  table { border-collapse: collapse; }
-  td, th { border: 1px solid #7F7F7F; text-align: center; font-family: "Microsoft JhengHei", Arial, sans-serif; font-size: 10pt; height: 24px; vertical-align: middle; }
-  .header-cell { background-color: #F2F2F2; font-weight: bold; }
-  .sun-cell { color: #FF0000; }
-  .ot-cell { text-align: center; font-weight: bold; background-color: #F2F2F2; }
-  .comment-cell { background-color: #FFFFFF; }
-</style>
-</head>
-<body>
-  <table>
-    <!-- 1. 表頭第一列 -->
-    <tr>
-      <th rowspan="2" class="header-cell" style="width: 120px;">${state.currentYear}</th>
-      <th class="header-cell" style="width: 100px;">${monthEng}</th>
-      <th class="header-cell" style="width: 60px;">休假</th>
-      <th rowspan="2" class="header-cell" style="width: 70px;">用餐</th>
-      <th rowspan="2" class="header-cell" style="width: 70px;">工作日</th>
-      <th rowspan="2" class="header-cell" style="width: 60px;">OFF</th>
-      <th rowspan="2" class="header-cell" style="width: 60px;">PTO</th>
-      <th rowspan="2" class="header-cell" style="width: 70px;">PTO-AL</th>
-      <th rowspan="2" class="header-cell" style="width: 60px;">LOA</th>
-      <th rowspan="2" class="header-cell" style="width: 60px;">公假</th>
-  `;
-
-  // 填充表頭第一列的星期
-  for (let d = 1; d <= daysCount; d++) {
-    const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const isSun = (dayOfWeek === 0);
-    const sunStyle = isSun ? ' color: #FF0000;' : '';
-    html += `      <th class="header-cell" style="width: 65px;${sunStyle}">${weekdaysEng[dayOfWeek]}</th>\n`;
-  }
-  html += `    </tr>\n`;
-
-  // 2. 表頭第二列
-  html += `    <tr>
-      <th class="header-cell">${standardWork}</th>
-      <th class="header-cell">${standardOff}</th>
-  `;
-  for (let d = 1; d <= daysCount; d++) {
-    const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-    const isSun = (dayOfWeek === 0);
-    const sunStyle = isSun ? ' color: #FF0000;' : '';
-    html += `      <th class="header-cell" style="${sunStyle}">${d}-${monthEng}</th>\n`;
-  }
-  html += `    </tr>\n`;
-
-  // 3. 寫入各客服排班資料
-  sortedStaff.forEach(emp => {
-    const color = groupColors[emp.defaultWorkShift] || '#FFFFFF';
-    const defShift = shiftList.find(s => s.id === emp.defaultWorkShift);
-    const shiftHours = defShift ? `${defShift.start}-${defShift.end}` : '';
-    const fixedOffStr = emp.defaultOffDays ? emp.defaultOffDays.map(d => weekdayMap[d]).join('') : '';
-    const lunchTime = getEmployeeLunchTime(emp, sortedStaff);
-
-    // 計算各項假別天數
-    let workCount = 0;
-    let offCount = 0;
-    let ptoCount = 0;
-    let loaCount = 0;
-    let pubCount = 0;
-
-    for (let d = 1; d <= daysCount; d++) {
-      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-      const sId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      
-      if (sId === 'OFF') {
-        offCount++;
-      } else if (sId === 'FOFF') {
-        offCount++;
-      } else if (sId === 'PTO') {
-        ptoCount++;
-      } else if (sId === 'LOA') {
-        loaCount++;
-      } else if (sId === 'PUB') {
-        pubCount++;
-      } else if (sId === 'AM_PTO' || sId === 'PM_PTO') {
-        ptoCount += 0.5;
-        workCount += 0.5;
-      } else {
-        workCount++;
+  // 輔助：班別儲存格樣式（202607v2 格式：上班日顯示開始時間並套用群組色）
+  function getShiftCellStyle(shiftId, groupColor) {
+    switch (shiftId) {
+      case 'OFF':
+      case 'FOFF':
+        return { bg: OFF_BG, text: '#000000', label: 'OFF' };
+      case 'PTO':
+        return { bg: PTO_BG, text: '#FF0000', label: 'PTO' };
+      case 'AM_PTO':
+        return { bg: PTO_BG, text: '#FF0000', label: 'Half-PTO' };
+      case 'PM_PTO':
+        return { bg: PTO_BG, text: '#FF0000', label: 'Half-PTO' };
+      case 'LOA':
+        return { bg: LOA_BG, text: '#000000', label: 'LOA' };
+      case 'PUB':
+        return { bg: PUB_BG, text: '#00838f', label: '公' };
+      default: {
+        const matched = shiftList.find(s => s.id === shiftId);
+        const label   = matched ? matched.start : shiftId;
+        return { bg: groupColor || '#FFFFFF', text: '#000000', label };
       }
     }
+  }
 
-    // 員工第一列 (排班資料)
-    html += `    <tr>
-      <td rowspan="2" style="background-color: ${color}; font-weight: bold;">${emp.name}</td>
-      <td rowspan="2" style="background-color: ${color};">${shiftHours}</td>
-      <td rowspan="2" style="background-color: ${color};">${fixedOffStr}</td>
-      <td rowspan="2" style="background-color: ${color};">${lunchTime}</td>
-      <td style="background-color: ${color}; font-weight: bold;">${workCount}</td>
-      <td style="background-color: ${color}; font-weight: bold;">${offCount}</td>
-      <td style="background-color: ${color}; font-weight: bold;">${ptoCount}</td>
-      <td style="background-color: ${color}; font-weight: bold;">0</td>
-      <td style="background-color: ${color}; font-weight: bold;">${loaCount}</td>
-      <td style="background-color: ${color}; font-weight: bold;">${pubCount}</td>
-    `;
+  // ═══════════════════════════════════════════════
+  //  開始組裝 Excel HTML（複製 202607v2 外型）
+  // ═══════════════════════════════════════════════
+  let html = `<html xmlns:o="urn:schemas-microsoft-excel:office:office" xmlns:x="urn:schemas-microsoft-excel:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<!--[if gte mso 9]><xml>
+  <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+    <x:Name>${state.currentYear}${String(state.currentMonth + 1).padStart(2,'0')}v2</x:Name>
+    <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+  </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+</xml><![endif]-->
+<style>
+  table { border-collapse: collapse; font-family: "Microsoft JhengHei", Calibri, Arial, sans-serif; }
+  td, th {
+    border: 1px solid #7F7F7F;
+    text-align: center;
+    font-size: 10pt;
+    height: 22px;
+    vertical-align: middle;
+    padding: 1px 3px;
+  }
+  .hdr { background-color: ${HEADER_BG}; font-weight: bold; }
+</style>
+</head>
+<body><table>
+`;
 
+  // ── 表頭 Row 1：年份(rowspan2) | 月份 | 假 | 餐(rowspan2) | 工作日(rowspan2) | OFF(rowspan2) | PTO(rowspan2) | PTO-AL(rowspan2) | LOA(rowspan2) | 星期...
+  html += `  <tr>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:110px;">${state.currentYear}</th>\n`;
+  html += `    <th class="hdr" style="width:90px;">${MONTH_FULL}</th>\n`;
+  html += `    <th class="hdr" style="width:35px;">假</th>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:50px;">餐</th>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:44px;">工作日</th>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:44px;">OFF</th>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:44px;">PTO</th>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:44px;">PTO-AL</th>\n`;
+  html += `    <th rowspan="2" class="hdr" style="width:44px;">LOA</th>\n`;
+  for (let d = 1; d <= daysCount; d++) {
+    const dow = getDayOfWeek(state.currentYear, state.currentMonth, d);
+    const cs  = dow === 0 ? ' color:#FF0000;' : (dow === 6 ? ' color:#0070C0;' : '');
+    html += `    <th class="hdr" style="width:70px;${cs}">${weekdaysEng[dow]}</th>\n`;
+  }
+  html += `  </tr>\n`;
+
+  // ── 表頭 Row 2：工作天數 | 休假天數 | 日期 d-Mon...
+  html += `  <tr>\n`;
+  html += `    <th class="hdr">${standardWork}</th>\n`;
+  html += `    <th class="hdr">${standardOff}</th>\n`;
+  for (let d = 1; d <= daysCount; d++) {
+    const dow = getDayOfWeek(state.currentYear, state.currentMonth, d);
+    const cs  = dow === 0 ? ' color:#FF0000;' : (dow === 6 ? ' color:#0070C0;' : '');
+    html += `    <th class="hdr" style="${cs}">${d}-${MONTH_ABBR}</th>\n`;
+  }
+  html += `  </tr>\n`;
+
+  // ── 員工排班列（每人 2 列：資料列 + OT 列）──
+  sortedStaff.forEach(emp => {
+    const gc        = GROUP_COLORS[emp.defaultWorkShift] || HEADER_BG;
+    const defShift  = shiftList.find(s => s.id === emp.defaultWorkShift);
+    const shiftHrs  = defShift ? `${defShift.start}-${defShift.end}` : '';
+    const offDayStr = emp.defaultOffDays ? emp.defaultOffDays.map(d => weekdayMap[d]).join('') : '';
+    const lunchTime = getEmployeeLunchTime(emp, sortedStaff);
+
+    // 統計各假別天數
+    let workCount = 0, offCount = 0, ptoCount = 0, ptoHalf = 0, loaCount = 0;
     for (let d = 1; d <= daysCount; d++) {
-      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-      const sId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-      const cellInfo = getShiftCellStyle(sId);
-      const styleStr = `background-color: ${cellInfo.bg}; color: ${cellInfo.text};${cellInfo.text === '#FF0000' ? ' font-weight: bold;' : ''}`;
-      html += `      <td style="${styleStr}">${cellInfo.label}</td>\n`;
+      const ds  = formatDateISO(state.currentYear, state.currentMonth, d);
+      const sid = (state.roster[ds] && state.roster[ds][emp.id]) || 'OFF';
+      if      (sid === 'OFF' || sid === 'FOFF')            offCount++;
+      else if (sid === 'PTO')                               ptoCount++;
+      else if (sid === 'LOA')                               loaCount++;
+      else if (sid === 'AM_PTO' || sid === 'PM_PTO')      { ptoHalf += 0.5; workCount += 0.5; }
+      else                                                  workCount++;
     }
-    html += `    </tr>\n`;
+    const ptoTotal = ptoCount + ptoHalf;
 
-    // 員工第二列 (備註與 OT)
-    html += `    <tr>
-      <td colspan="6" class="ot-cell" style="background-color: ${color};">OT</td>
-    `;
+    // 資料列（奇數列）
+    html += `  <tr>\n`;
+    html += `    <td rowspan="2" style="background-color:${gc};font-weight:bold;">${emp.name}</td>\n`;
+    html += `    <td rowspan="2" style="background-color:${gc};">${shiftHrs}</td>\n`;
+    html += `    <td rowspan="2" style="background-color:${gc};">${offDayStr}</td>\n`;
+    html += `    <td rowspan="2" style="background-color:${gc};">${lunchTime}</td>\n`;
+    html += `    <td style="background-color:${gc};font-weight:bold;">${workCount}</td>\n`;
+    html += `    <td style="background-color:${gc};font-weight:bold;">${offCount}</td>\n`;
+    html += `    <td style="background-color:${gc};font-weight:bold;">${ptoTotal > 0 ? ptoTotal : 0}</td>\n`;
+    html += `    <td style="background-color:${gc};font-weight:bold;">0</td>\n`;
+    html += `    <td style="background-color:${gc};font-weight:bold;">${loaCount}</td>\n`;
     for (let d = 1; d <= daysCount; d++) {
-      html += `      <td class="comment-cell"></td>\n`;
+      const ds   = formatDateISO(state.currentYear, state.currentMonth, d);
+      const sid  = (state.roster[ds] && state.roster[ds][emp.id]) || 'OFF';
+      const ci   = getShiftCellStyle(sid, gc);
+      const fw   = ci.text === '#FF0000' ? 'font-weight:bold;' : '';
+      html += `    <td style="background-color:${ci.bg};color:${ci.text};${fw}">${ci.label}</td>\n`;
     }
-    html += `    </tr>\n`;
+    html += `  </tr>\n`;
+
+    // OT 列（偶數列）── A~D 已被 rowspan 佔用，只需從 E 欄開始
+    html += `  <tr>\n`;
+    html += `    <td style="font-weight:bold;">OT</td>\n`;
+    html += `    <td></td><td></td><td></td><td></td>\n`;
+    for (let d = 1; d <= daysCount; d++) {
+      html += `    <td></td>\n`;
+    }
+    html += `  </tr>\n`;
   });
 
-  // 4. 寫入每日可額外休假 (PTO) 額度列 (第一階段)
-  if (targetStage === 1) {
-    html += `    <tr>
-        <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px;">可再休 PTO</td>
-    `;
-    for (let d = 1; d <= daysCount; d++) {
-      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+  // ── 底部列（視階段不同而異）──
 
+  // 第一階段：可再落入 PTO 數量列（保留原功能）
+  if (targetStage === 1) {
+    html += `  <tr>\n`;
+    html += `    <td colspan="9" class="hdr" style="text-align:right;padding-right:8px;">可再落入PTO數量</td>\n`;
+    for (let d = 1; d <= daysCount; d++) {
+      const ds  = formatDateISO(state.currentYear, state.currentMonth, d);
+      const dow = getDayOfWeek(state.currentYear, state.currentMonth, d);
+      const isWE = (dow === 0 || dow === 6);
       let minRequired = 0;
       shiftList.forEach(s => {
-        const targetConfig = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
-        minRequired += isWeekend ? targetConfig.weekend : targetConfig.weekday;
+        const tc = state.coverageTargets[s.id] || { weekday: 0, weekend: 0 };
+        minRequired += isWE ? tc.weekend : tc.weekday;
       });
-
       let activeWorking = 0;
       staffList.forEach(emp => {
         if (emp.defaultWorkShift === 'D') return;
-        const shiftId = (state.roster[dateStr] && state.roster[dateStr][emp.id]) || 'OFF';
-        if (shiftId !== 'OFF' && shiftId !== 'PTO' && shiftId !== 'LOA' && shiftId !== 'PUB' && shiftId !== 'FOFF') {
-          if (shiftId === 'AM_PTO' || shiftId === 'PM_PTO') {
-            activeWorking += 0.5;
-          } else {
-            activeWorking++;
-          }
+        const sid = (state.roster[ds] && state.roster[ds][emp.id]) || 'OFF';
+        if (sid !== 'OFF' && sid !== 'PTO' && sid !== 'LOA' && sid !== 'PUB' && sid !== 'FOFF') {
+          activeWorking += (sid === 'AM_PTO' || sid === 'PM_PTO') ? 0.5 : 1;
         }
       });
-
-      const extraPtoAvailable = Math.max(0, activeWorking - minRequired);
-      const quotaLabel = extraPtoAvailable > 0 ? `+${extraPtoAvailable}` : '0';
-      html += `      <td class="header-cell" style="font-weight: bold;">${quotaLabel}</td>\n`;
+      const extra = Math.max(0, activeWorking - minRequired);
+      html += `    <td class="hdr">${extra > 0 ? '+' + extra : '0'}</td>\n`;
     }
-    html += `    </tr>\n`;
+    html += `  </tr>\n`;
   }
 
-  // 5. 寫入值日生列 (Excel 格式)
+  // 第二階段：早班值日列 + 晚班值日列（完全複製 202607v2 格式）
   if (targetStage === 2 && state.dutyRoster) {
-    // 早班值日 row
-    html += `    <tr>
-      <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px; background-color: #E6F0FA;">早班值日 (12:00-17:00)</td>
-    `;
-    for (let d = 1; d <= daysCount; d++) {
-      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-      const isMonday = (dayOfWeek === 1);
-      
-      if (isWeekend) {
-        html += `      <td style="background-color: #E2E8F0; color: #7F7F7F; font-weight: bold;">X</td>\n`;
-      } else {
-        const duty = state.dutyRoster[dateStr] || { early: "", late: "" };
-        const emp = staffList.find(e => e.id === duty.early);
-        const name = emp ? emp.name : "";
-        
-        let styleStr = "background-color: #FFFFFF;";
-        let label = name;
-        if (isMonday) {
-          if (name) {
-            styleStr = "background-color: #FFF9E6; font-weight: bold; color: #B7791F;";
+    const dutyRows = [
+      { key: 'early', label: '早班值日', labelBg: '#E6F0FA' },
+      { key: 'late',  label: '晚班值日', labelBg: '#F0E6FF' },
+    ];
+    dutyRows.forEach(({ key, label, labelBg }) => {
+      html += `  <tr>\n`;
+      html += `    <td colspan="9" class="hdr" style="text-align:right;padding-right:8px;background-color:${labelBg};">${label}</td>\n`;
+      for (let d = 1; d <= daysCount; d++) {
+        const ds  = formatDateISO(state.currentYear, state.currentMonth, d);
+        const dow = getDayOfWeek(state.currentYear, state.currentMonth, d);
+        if (dow === 0 || dow === 6) {
+          html += `    <td style="background-color:#E2E8F0;color:#7F7F7F;font-weight:bold;">X</td>\n`;
+        } else {
+          const duty  = state.dutyRoster[ds] || { early: '', late: '' };
+          const emp   = staffList.find(e => e.id === duty[key]);
+          const name  = emp ? emp.name : '';
+          const isMon = (dow === 1);
+          let sty, lbl;
+          if (isMon && name) {
+            sty = 'background-color:#FFF9E6;font-weight:bold;color:#B7791F;';
+            lbl = name;
+          } else if (isMon && !name) {
+            sty = 'background-color:#FFF9E6;color:#D69E2E;font-style:italic;';
+            lbl = '自願';
           } else {
-            styleStr = "background-color: #FFF9E6; color: #D69E2E; font-style: italic;";
-            label = "自願";
+            sty = 'background-color:#FFFFFF;';
+            lbl = name;
           }
+          html += `    <td style="${sty}">${lbl}</td>\n`;
         }
-        html += `      <td style="${styleStr}">${label}</td>\n`;
       }
-    }
-    html += `    </tr>\n`;
-
-    // 晚班值日 row
-    html += `    <tr>
-      <td colspan="10" class="header-cell" style="text-align: right; font-weight: bold; padding-right: 10px; background-color: #F0E6FF;">晚班值日 (17:00-21:00)</td>
-    `;
-    for (let d = 1; d <= daysCount; d++) {
-      const dateStr = formatDateISO(state.currentYear, state.currentMonth, d);
-      const dayOfWeek = getDayOfWeek(state.currentYear, state.currentMonth, d);
-      const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-      const isMonday = (dayOfWeek === 1);
-      
-      if (isWeekend) {
-        html += `      <td style="background-color: #E2E8F0; color: #7F7F7F; font-weight: bold;">X</td>\n`;
-      } else {
-        const duty = state.dutyRoster[dateStr] || { early: "", late: "" };
-        const emp = staffList.find(e => e.id === duty.late);
-        const name = emp ? emp.name : "";
-        
-        let styleStr = "background-color: #FFFFFF;";
-        let label = name;
-        if (isMonday) {
-          if (name) {
-            styleStr = "background-color: #FFF9E6; font-weight: bold; color: #B7791F;";
-          } else {
-            styleStr = "background-color: #FFF9E6; color: #D69E2E; font-style: italic;";
-            label = "自願";
-          }
-        }
-        html += `      <td style="${styleStr}">${label}</td>\n`;
-      }
-    }
-    html += `    </tr>\n`;
+      html += `  </tr>\n`;
+    });
   }
 
-  html += `  </table>
-</body>
-</html>`;
+  html += `</table></body></html>`;
 
   try {
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
+    const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
     link.setAttribute('download', `Asurion客服班表_${state.currentYear}年_${state.currentMonth + 1}月_第${targetStage}階段.xls`);
@@ -3666,7 +3604,7 @@ function exportRosterToExcel(targetStage = 1) {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   } catch (err) {
-    console.warn("自動下載 Excel 被阻擋，啟用備用彈窗:", err);
+    console.warn('自動下載 Excel 被阻擋，啟用備用彈窗:', err);
     showExportFallback(html, 'Excel');
   }
 }
