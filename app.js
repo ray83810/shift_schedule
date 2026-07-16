@@ -1236,22 +1236,24 @@ function runAutoScheduler() {
   updateUnsavedChangesUI();
 }
 
-// 智慧編排第二階段值日生班表 (只安排週二、週三、週四，且每人限制剛好最多3次以保極限平衡)
+// 智慧編排第二階段值日生班表
+// 週一全部空出。週二、三、四為主要安排時段，每人上限 3 次。
+// 若有人在主要時段未排滿 3 次，則可在週五被安排值日。若所有人皆已滿 3 次，則週五保持空出。
 function runDutyAutoScheduler(rosterObj) {
   const year = state.currentYear;
   const month = state.currentMonth;
   const daysCount = getDaysInMonth(year, month);
   const staffList = state.staff;
   
-  // 1. 搜集所有可排班的日期與時段 (僅週二、週三、週四)
-  const slots = [];
+  // 1. 搜集主要排班日期與時段 (週二、週三、週四)
+  const primarySlots = [];
   for (let d = 1; d <= daysCount; d++) {
     const dateStr = formatDateISO(year, month, d);
     const dayOfWeek = getDayOfWeek(year, month, d);
     
     if (dayOfWeek === 2 || dayOfWeek === 3 || dayOfWeek === 4) {
-      slots.push({ date: dateStr, role: 'early' });
-      slots.push({ date: dateStr, role: 'late' });
+      primarySlots.push({ date: dateStr, role: 'early' });
+      primarySlots.push({ date: dateStr, role: 'late' });
     }
   }
   
@@ -1267,17 +1269,17 @@ function runDutyAutoScheduler(rosterObj) {
     empCounts[emp.id] = 0;
   });
 
-  // 3. 回溯搜尋演算法 (Backtracking Solver)
-  function backtrack(slotIdx) {
-    if (slotIdx === slots.length) {
+  // 3. 階段一：回溯搜尋編排主要時段 (週二、三、四)
+  function backtrackPrimary(slotIdx) {
+    if (slotIdx === primarySlots.length) {
       return true;
     }
     
-    const slot = slots[slotIdx];
+    const slot = primarySlots[slotIdx];
     const dateStr = slot.date;
     const role = slot.role;
     
-    // 篩選當天有上班且班別符合規定的候選人
+    // 篩選當天有上班且角色符合的候選人
     const candidates = staffList.filter(emp => {
       const shiftId = (rosterObj[dateStr] && rosterObj[dateStr][emp.id]) || 'OFF';
       if (role === 'early') {
@@ -1287,13 +1289,13 @@ function runDutyAutoScheduler(rosterObj) {
       }
     });
     
-    // 按當前值日次數升序排序，使次數最少者優先被指派
+    // 按值日次數升序排序，優先次數少者
     candidates.sort((a, b) => empCounts[a.id] - empCounts[b.id]);
     
     for (let i = 0; i < candidates.length; i++) {
       const emp = candidates[i];
       
-      // 限制一：每位同仁一個月排定值日上限為 3 次
+      // 限制一：上限 3 次
       if (empCounts[emp.id] >= 3) {
         continue;
       }
@@ -1306,7 +1308,7 @@ function runDutyAutoScheduler(rosterObj) {
       assigned[dateStr][role] = emp.id;
       empCounts[emp.id]++;
       
-      if (backtrack(slotIdx + 1)) {
+      if (backtrackPrimary(slotIdx + 1)) {
         return true;
       }
       
@@ -1315,17 +1317,49 @@ function runDutyAutoScheduler(rosterObj) {
       empCounts[emp.id]--;
     }
     
-    // 允許該時段空缺以滿足每人 3 次的極限限制
+    // 允許該時段空缺
     assigned[dateStr][role] = "";
-    if (backtrack(slotIdx + 1)) {
+    if (backtrackPrimary(slotIdx + 1)) {
       return true;
     }
     
     return false;
   }
   
-  // 4. 啟動求解器
-  backtrack(0);
+  // 啟動主要時段求解器
+  backtrackPrimary(0);
+
+  // 4. 階段二：選擇性編排週五時段
+  const fridaySlots = [];
+  for (let d = 1; d <= daysCount; d++) {
+    const dateStr = formatDateISO(year, month, d);
+    const dayOfWeek = getDayOfWeek(year, month, d);
+    if (dayOfWeek === 5) {
+      fridaySlots.push({ date: dateStr, role: 'early' });
+      fridaySlots.push({ date: dateStr, role: 'late' });
+    }
+  }
+
+  // 依序填補週五時段
+  fridaySlots.forEach(slot => {
+    const dateStr = slot.date;
+    const role = slot.role;
+
+    // 篩選當天有上班、目前值日天數 < 3 且符合角色規定的候選人
+    const candidates = staffList.filter(emp => {
+      const shiftId = (rosterObj[dateStr] && rosterObj[dateStr][emp.id]) || 'OFF';
+      const isAvailable = (role === 'early') ? (shiftId === 'A' || shiftId === 'B') : (shiftId === 'C' || shiftId === 'D');
+      const notDuplicate = (role === 'early' && assigned[dateStr].late !== emp.id) || (role === 'late' && assigned[dateStr].early !== emp.id);
+      return isAvailable && empCounts[emp.id] < 3 && notDuplicate;
+    });
+
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => empCounts[a.id] - empCounts[b.id]);
+      const chosen = candidates[0];
+      assigned[dateStr][role] = chosen.id;
+      empCounts[chosen.id]++;
+    }
+  });
   
   // 5. 寫入狀態並標記未儲存
   state.dutyRoster = assigned;
